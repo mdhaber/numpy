@@ -1,18 +1,13 @@
-from __future__ import division, absolute_import, print_function
-
 import sys
 
 import pytest
 
 import numpy as np
-from numpy.testing import assert_, assert_equal
+from numpy.testing import assert_, assert_equal, IS_MUSL
 from numpy.core.tests._locales import CommaDecimalPointLocale
 
 
-if sys.version_info[0] >= 3:
-    from io import StringIO
-else:
-    from StringIO import StringIO
+from io import StringIO
 
 _REF = {np.inf: 'inf', -np.inf: '-inf', np.nan: 'nan'}
 
@@ -201,5 +196,7 @@ class TestCommaDecimalPointLocale(CommaDecimalPointLocale):
     def test_locale_double(self):
         assert_equal(str(np.double(1.2)), str(float(1.2)))
 
+    @pytest.mark.skipif(IS_MUSL,
+                        reason="test flaky on musllinux")
     def test_locale_longdouble(self):
         assert_equal(str(np.longdouble('1.2')), str(float(1.2)))

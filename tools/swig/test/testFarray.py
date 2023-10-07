@@ -1,6 +1,4 @@
-#! /usr/bin/env python
-from __future__ import division, absolute_import, print_function
-
+#!/usr/bin/env python3
 # System imports
 from   distutils.util import get_platform
 import os
@@ -15,7 +13,7 @@ else:          BadListError = ValueError
 
 # Add the distutils-generated build directory to the python search path and then
 # import the extension module
-libDir = "lib.%s-%s" % (get_platform(), sys.version[:3])
+libDir = "lib.{}-{}.{}".format(get_platform(), *sys.version_info[:2])
 sys.path.insert(0, os.path.join("build", libDir))
 import Farray
 
@@ -30,7 +28,7 @@ class FarrayTestCase(unittest.TestCase):
 
     def testConstructor1(self):
         "Test Farray size constructor"
-        self.failUnless(isinstance(self.array, Farray.Farray))
+        self.assertTrue(isinstance(self.array, Farray.Farray))
 
     def testConstructor2(self):
         "Test Farray copy constructor"
@@ -38,7 +36,7 @@ class FarrayTestCase(unittest.TestCase):
             for j in range(self.ncols):
                 self.array[i, j] = i + j
         arrayCopy = Farray.Farray(self.array)
-        self.failUnless(arrayCopy == self.array)
+        self.assertTrue(arrayCopy == self.array)
 
     def testConstructorBad1(self):
         "Test Farray size constructor, negative nrows"
@@ -50,15 +48,15 @@ class FarrayTestCase(unittest.TestCase):
 
     def testNrows(self):
         "Test Farray nrows method"
-        self.failUnless(self.array.nrows() == self.nrows)
+        self.assertTrue(self.array.nrows() == self.nrows)
 
     def testNcols(self):
         "Test Farray ncols method"
-        self.failUnless(self.array.ncols() == self.ncols)
+        self.assertTrue(self.array.ncols() == self.ncols)
 
     def testLen(self):
         "Test Farray __len__ method"
-        self.failUnless(len(self.array) == self.nrows*self.ncols)
+        self.assertTrue(len(self.array) == self.nrows*self.ncols)
 
     def testSetGet(self):
         "Test Farray __setitem__, __getitem__ methods"
@@ -69,7 +67,7 @@ class FarrayTestCase(unittest.TestCase):
                 self.array[i, j] = i*j
         for i in range(m):
             for j in range(n):
-                self.failUnless(self.array[i, j] == i*j)
+                self.assertTrue(self.array[i, j] == i*j)
 
     def testSetBad1(self):
         "Test Farray __setitem__ method, negative row"
@@ -115,7 +113,7 @@ class FarrayTestCase(unittest.TestCase):
         for i in range(self.nrows):
             for j in range(self.ncols):
                 self.array[i, j] = i+j
-        self.failUnless(self.array.asString() == result)
+        self.assertTrue(self.array.asString() == result)
 
     def testStr(self):
         "Test Farray __str__ method"
@@ -129,7 +127,7 @@ class FarrayTestCase(unittest.TestCase):
         for i in range(self.nrows):
             for j in range(self.ncols):
                 self.array[i, j] = i-j
-        self.failUnless(str(self.array) == result)
+        self.assertTrue(str(self.array) == result)
 
     def testView(self):
         "Test Farray view method"
@@ -137,11 +135,11 @@ class FarrayTestCase(unittest.TestCase):
             for j in range(self.ncols):
                 self.array[i, j] = i+j
         a = self.array.view()
-        self.failUnless(isinstance(a, np.ndarray))
-        self.failUnless(a.flags.f_contiguous)
+        self.assertTrue(isinstance(a, np.ndarray))
+        self.assertTrue(a.flags.f_contiguous)
         for i in range(self.nrows):
             for j in range(self.ncols):
-                self.failUnless(a[i, j] == i+j)
+                self.assertTrue(a[i, j] == i+j)
 
 ######################################################################
 

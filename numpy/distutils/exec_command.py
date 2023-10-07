@@ -49,8 +49,6 @@ Known bugs:
   because the messages are lost at some point.
 
 """
-from __future__ import division, absolute_import, print_function
-
 __all__ = ['exec_command', 'find_executable']
 
 import os
@@ -76,10 +74,6 @@ def filepath_from_subprocess_output(output):
     # Another historical oddity
     if output[-1:] == '\n':
         output = output[:-1]
-    # stdio uses bytes in python 2, so to avoid issues, we simply
-    # remove all non-ascii characters
-    if sys.version_info < (3, 0):
-        output = output.encode('ascii', errors='replace')
     return output
 
 
@@ -91,10 +85,7 @@ def forward_bytes_to_stdout(val):
     The assumption is that the subprocess call already returned bytes in
     a suitable encoding.
     """
-    if sys.version_info.major < 3:
-        # python 2 has binary output anyway
-        sys.stdout.write(val)
-    elif hasattr(sys.stdout, 'buffer'):
+    if hasattr(sys.stdout, 'buffer'):
         # use the underlying binary output if there is one
         sys.stdout.buffer.write(val)
     elif hasattr(sys.stdout, 'encoding'):
@@ -285,15 +276,14 @@ def _exec_command(command, use_shell=None, use_tee = None, **env):
     # Inherit environment by default
     env = env or None
     try:
-        # universal_newlines is set to False so that communicate()
+        # text is set to False so that communicate()
         # will return bytes. We need to decode the output ourselves
         # so that Python will not raise a UnicodeDecodeError when
         # it encounters an invalid character; rather, we simply replace it
-        proc = subprocess.Popen(command, shell=use_shell, env=env,
+        proc = subprocess.Popen(command, shell=use_shell, env=env, text=False,
                                 stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                universal_newlines=False)
-    except EnvironmentError:
+                                stderr=subprocess.STDOUT)
+    except OSError:
         # Return 127, as os.spawn*() and /bin/sh do
         return 127, ''
 
@@ -306,11 +296,6 @@ def _exec_command(command, use_shell=None, use_tee = None, **env):
     # Another historical oddity
     if text[-1:] == '\n':
         text = text[:-1]
-
-    # stdio uses bytes in python 2, so to avoid issues, we simply
-    # remove all non-ascii characters
-    if sys.version_info < (3, 0):
-        text = text.encode('ascii', errors='replace')
 
     if use_tee and text:
         print(text)

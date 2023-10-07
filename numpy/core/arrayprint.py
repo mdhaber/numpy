@@ -3,9 +3,7 @@
 $Id: arrayprint.py,v 1.9 2005/09/13 13:58:44 teoliphant Exp $
 
 """
-from __future__ import division, absolute_import, print_function
-
-__all__ = ["array2string", "array_str", "array_repr", "set_string_function",
+__all__ = ["array2string", "array_str", "array_repr",
            "set_printoptions", "get_printoptions", "printoptions",
            "format_float_positional", "format_float_scientific"]
 __docformat__ = 'restructuredtext'
@@ -24,32 +22,27 @@ __docformat__ = 'restructuredtext'
 # scalars are printed inside an ndarray. Only the latter strs are currently
 # user-customizable.
 
-import sys
 import functools
 import numbers
-if sys.version_info[0] >= 3:
-    try:
-        from _thread import get_ident
-    except ImportError:
-        from _dummy_thread import get_ident
-else:
-    try:
-        from thread import get_ident
-    except ImportError:
-        from dummy_thread import get_ident
+import sys
+try:
+    from _thread import get_ident
+except ImportError:
+    from _dummy_thread import get_ident
 
 import numpy as np
 from . import numerictypes as _nt
-from .umath import absolute, not_equal, isnan, isinf, isfinite, isnat
+from .umath import absolute, isinf, isfinite, isnat
 from . import multiarray
 from .multiarray import (array, dragon4_positional, dragon4_scientific,
                          datetime_as_string, datetime_data, ndarray,
                          set_legacy_print_mode)
-from .fromnumeric import ravel, any
+from .fromnumeric import any
 from .numeric import concatenate, asarray, errstate
-from .numerictypes import (longlong, intc, int_, float_, complex_, bool_,
+from .numerictypes import (longlong, intc, int_, float64, complex128, bool_,
                            flexible)
 from .overrides import array_function_dispatch, set_module
+import operator
 import warnings
 import contextlib
 
@@ -64,14 +57,19 @@ _format_options = {
     'infstr': 'inf',
     'sign': '-',
     'formatter': None,
-    'legacy': False}
+    # Internally stored as an int to simplify comparisons; converted from/to
+    # str/False on the way in/out.
+    'legacy': sys.maxsize}
 
 def _make_options_dict(precision=None, threshold=None, edgeitems=None,
                        linewidth=None, suppress=None, nanstr=None, infstr=None,
                        sign=None, formatter=None, floatmode=None, legacy=None):
-    """ make a dictionary out of the non-None arguments, plus sanity checks """
+    """
+    Make a dictionary out of the non-None arguments, plus conversion of
+    *legacy* and sanity checks.
+    """
 
-    options = {k: v for k, v in locals().items() if v is not None}
+    options = {k: v for k, v in list(locals().items()) if v is not None}
 
     if suppress is not None:
         options['suppress'] = bool(suppress)
@@ -84,9 +82,21 @@ def _make_options_dict(precision=None, threshold=None, edgeitems=None,
     if sign not in [None, '-', '+', ' ']:
         raise ValueError("sign option must be one of ' ', '+', or '-'")
 
-    if legacy not in [None, False, '1.13']:
-        warnings.warn("legacy printing option can currently only be '1.13' or "
-                      "`False`", stacklevel=3)
+    if legacy == False:
+        options['legacy'] = sys.maxsize
+    elif legacy == '1.13':
+        options['legacy'] = 113
+    elif legacy == '1.21':
+        options['legacy'] = 121
+    elif legacy == '1.25':
+        options['legacy'] = 125
+    elif legacy is None:
+        pass  # OK, do nothing.
+    else:
+        warnings.warn(
+            "legacy printing option can currently only be '1.13', '1.21', "
+            "'1.25', or `False`", stacklevel=3)
+
     if threshold is not None:
         # forbid the bad threshold arg suggested by stack overflow, gh-12351
         if not isinstance(threshold, numbers.Number):
@@ -94,13 +104,21 @@ def _make_options_dict(precision=None, threshold=None, edgeitems=None,
         if np.isnan(threshold):
             raise ValueError("threshold must be non-NAN, try "
                              "sys.maxsize for untruncated representation")
+
+    if precision is not None:
+        # forbid the bad precision arg as suggested by issue #18254
+        try:
+            options['precision'] = operator.index(precision)
+        except TypeError as e:
+            raise TypeError('precision must be an integer') from e
+
     return options
 
 
 @set_module('numpy')
 def set_printoptions(precision=None, threshold=None, edgeitems=None,
                      linewidth=None, suppress=None, nanstr=None, infstr=None,
-                     formatter=None, sign=None, floatmode=None, **kwarg):
+                     formatter=None, sign=None, floatmode=None, *, legacy=None):
     """
     Set printing options.
 
@@ -111,7 +129,7 @@ def set_printoptions(precision=None, threshold=None, edgeitems=None,
     ----------
     precision : int or None, optional
         Number of digits of precision for floating point output (default 8).
-        May be `None` if `floatmode` is not `fixed`, to print as many digits as
+        May be None if `floatmode` is not `fixed`, to print as many digits as
         necessary to uniquely specify the value.
     threshold : int, optional
         Total number of array elements which trigger summarization
@@ -138,6 +156,11 @@ def set_printoptions(precision=None, threshold=None, edgeitems=None,
         print the sign of positive values. If ' ', always prints a space
         (whitespace character) in the sign position of positive values.  If
         '-', omit the sign character of positive values. (default '-')
+
+        .. versionchanged:: 2.0
+             The sign parameter can now be an integer type, previously
+             types were floating-point types.
+
     formatter : dict of callables, optional
         If not None, the keys should indicate the type(s) that the respective
         formatting function applies to.  Callables should return a string.
@@ -153,9 +176,8 @@ def set_printoptions(precision=None, threshold=None, edgeitems=None,
         - 'longfloat' : 128-bit floats
         - 'complexfloat'
         - 'longcomplexfloat' : composed of two 128-bit floats
-        - 'numpystr' : types `numpy.string_` and `numpy.unicode_`
+        - 'numpystr' : types `numpy.bytes_` and `numpy.str_`
         - 'object' : `np.object_` arrays
-        - 'str' : all other strings
 
         Other keys that can be used to set a group of types at once are:
 
@@ -163,7 +185,7 @@ def set_printoptions(precision=None, threshold=None, edgeitems=None,
         - 'int_kind' : sets 'int'
         - 'float_kind' : sets 'float' and 'longfloat'
         - 'complex_kind' : sets 'complexfloat' and 'longcomplexfloat'
-        - 'str_kind' : sets 'str' and 'numpystr'
+        - 'str_kind' : sets 'numpystr'
     floatmode : str, optional
         Controls the interpretation of the `precision` option for
         floating-point types. Can take the following values
@@ -186,19 +208,31 @@ def set_printoptions(precision=None, threshold=None, edgeitems=None,
     legacy : string or `False`, optional
         If set to the string `'1.13'` enables 1.13 legacy printing mode. This
         approximates numpy 1.13 print output by including a space in the sign
-        position of floats and different behavior for 0d arrays. If set to
-        `False`, disables legacy mode. Unrecognized strings will be ignored
-        with a warning for forward compatibility.
+        position of floats and different behavior for 0d arrays. This also
+        enables 1.21 legacy printing mode (described below).
+
+        If set to the string `'1.21'` enables 1.21 legacy printing mode. This
+        approximates numpy 1.21 print output of complex structured dtypes
+        by not inserting spaces after commas that separate fields and after
+        colons.
+
+        If set to `False`, disables legacy mode.
+
+        Unrecognized strings will be ignored with a warning for forward
+        compatibility.
 
         .. versionadded:: 1.14.0
+        .. versionchanged:: 1.22.0
 
     See Also
     --------
-    get_printoptions, set_string_function, array2string
+    get_printoptions, printoptions, array2string
 
     Notes
     -----
     `formatter` is always reset with a call to `set_printoptions`.
+
+    Use `printoptions` as a context manager to set the values temporarily.
 
     Examples
     --------
@@ -236,15 +270,17 @@ def set_printoptions(precision=None, threshold=None, edgeitems=None,
 
     To put back the default options, you can use:
 
-    >>> np.set_printoptions(edgeitems=3,infstr='inf',
+    >>> np.set_printoptions(edgeitems=3, infstr='inf',
     ... linewidth=75, nanstr='nan', precision=8,
     ... suppress=False, threshold=1000, formatter=None)
-    """
-    legacy = kwarg.pop('legacy', None)
-    if kwarg:
-        msg = "set_printoptions() got unexpected keyword argument '{}'"
-        raise TypeError(msg.format(kwarg.popitem()[0]))
 
+    Also to temporarily override options, use `printoptions` as a context manager:
+
+    >>> with np.printoptions(precision=2, suppress=True, threshold=5):
+    ...     np.linspace(0, 10, 10)
+    array([ 0.  ,  1.11,  2.22, ...,  7.78,  8.89, 10.  ])
+
+    """
     opt = _make_options_dict(precision, threshold, edgeitems, linewidth,
                              suppress, nanstr, infstr, sign, formatter,
                              floatmode, legacy)
@@ -253,11 +289,15 @@ def set_printoptions(precision=None, threshold=None, edgeitems=None,
     _format_options.update(opt)
 
     # set the C variable for legacy mode
-    if _format_options['legacy'] == '1.13':
+    if _format_options['legacy'] == 113:
         set_legacy_print_mode(113)
         # reset the sign option in legacy mode to avoid confusion
         _format_options['sign'] = '-'
-    elif _format_options['legacy'] is False:
+    elif _format_options['legacy'] == 121:
+        set_legacy_print_mode(121)
+    elif _format_options['legacy'] == 125:
+        set_legacy_print_mode(125)
+    elif _format_options['legacy'] == sys.maxsize:
         set_legacy_print_mode(0)
 
 
@@ -271,24 +311,33 @@ def get_printoptions():
     print_opts : dict
         Dictionary of current print options with keys
 
-          - precision : int
-          - threshold : int
-          - edgeitems : int
-          - linewidth : int
-          - suppress : bool
-          - nanstr : str
-          - infstr : str
-          - formatter : dict of callables
-          - sign : str
+        - precision : int
+        - threshold : int
+        - edgeitems : int
+        - linewidth : int
+        - suppress : bool
+        - nanstr : str
+        - infstr : str
+        - formatter : dict of callables
+        - sign : str
 
         For a full description of these options, see `set_printoptions`.
 
     See Also
     --------
-    set_printoptions, set_string_function
+    set_printoptions, printoptions
 
     """
-    return _format_options.copy()
+    opts = _format_options.copy()
+    opts['legacy'] = {
+        113: '1.13', 121: '1.21', 125: '1.25', sys.maxsize: False,
+    }[opts['legacy']]
+    return opts
+
+
+def _get_legacy_print_mode():
+    """Return the legacy print mode as an int."""
+    return _format_options['legacy']
 
 
 @set_module('numpy')
@@ -355,41 +404,42 @@ def _object_format(o):
     return fmt.format(o)
 
 def repr_format(x):
+    if isinstance(x, (np.str_, np.bytes_)):
+        return repr(x.item())
     return repr(x)
 
 def str_format(x):
+    if isinstance(x, (np.str_, np.bytes_)):
+        return str(x.item())
     return str(x)
 
-def _get_formatdict(data, **opt):
-    prec, fmode = opt['precision'], opt['floatmode']
-    supp, sign = opt['suppress'], opt['sign']
-    legacy = opt['legacy']
+def _get_formatdict(data, *, precision, floatmode, suppress, sign, legacy,
+                    formatter, **kwargs):
+    # note: extra arguments in kwargs are ignored
 
     # wrapped in lambdas to avoid taking a code path with the wrong type of data
     formatdict = {
         'bool': lambda: BoolFormat(data),
-        'int': lambda: IntegerFormat(data),
-        'float': lambda:
-            FloatingFormat(data, prec, fmode, supp, sign, legacy=legacy),
-        'longfloat': lambda:
-            FloatingFormat(data, prec, fmode, supp, sign, legacy=legacy),
-        'complexfloat': lambda:
-            ComplexFloatingFormat(data, prec, fmode, supp, sign, legacy=legacy),
-        'longcomplexfloat': lambda:
-            ComplexFloatingFormat(data, prec, fmode, supp, sign, legacy=legacy),
+        'int': lambda: IntegerFormat(data, sign),
+        'float': lambda: FloatingFormat(
+            data, precision, floatmode, suppress, sign, legacy=legacy),
+        'longfloat': lambda: FloatingFormat(
+            data, precision, floatmode, suppress, sign, legacy=legacy),
+        'complexfloat': lambda: ComplexFloatingFormat(
+            data, precision, floatmode, suppress, sign, legacy=legacy),
+        'longcomplexfloat': lambda: ComplexFloatingFormat(
+            data, precision, floatmode, suppress, sign, legacy=legacy),
         'datetime': lambda: DatetimeFormat(data, legacy=legacy),
         'timedelta': lambda: TimedeltaFormat(data),
         'object': lambda: _object_format,
         'void': lambda: str_format,
-        'numpystr': lambda: repr_format,
-        'str': lambda: str}
+        'numpystr': lambda: repr_format}
 
     # we need to wrap values in `formatter` in a lambda, so that the interface
     # is the same as the above values.
     def indirect(x):
         return lambda: x
 
-    formatter = opt['formatter']
     if formatter is not None:
         fkeys = [k for k in formatter.keys() if formatter[k] is not None]
         if 'all' in fkeys:
@@ -405,8 +455,7 @@ def _get_formatdict(data, **opt):
             for key in ['complexfloat', 'longcomplexfloat']:
                 formatdict[key] = indirect(formatter['complex_kind'])
         if 'str_kind' in fkeys:
-            for key in ['numpystr', 'str']:
-                formatdict[key] = indirect(formatter['str_kind'])
+            formatdict['numpystr'] = indirect(formatter['str_kind'])
         for key in formatdict.keys():
             if key in fkeys:
                 formatdict[key] = indirect(formatter[key])
@@ -420,7 +469,9 @@ def _get_format_function(data, **options):
     dtype_ = data.dtype
     dtypeobj = dtype_.type
     formatdict = _get_formatdict(data, **options)
-    if issubclass(dtypeobj, _nt.bool_):
+    if dtypeobj is None:
+        return formatdict["numpystr"]()
+    elif issubclass(dtypeobj, _nt.bool_):
         return formatdict['bool']()
     elif issubclass(dtypeobj, _nt.integer):
         if issubclass(dtypeobj, _nt.timedelta64):
@@ -428,16 +479,16 @@ def _get_format_function(data, **options):
         else:
             return formatdict['int']()
     elif issubclass(dtypeobj, _nt.floating):
-        if issubclass(dtypeobj, _nt.longfloat):
+        if issubclass(dtypeobj, _nt.longdouble):
             return formatdict['longfloat']()
         else:
             return formatdict['float']()
     elif issubclass(dtypeobj, _nt.complexfloating):
-        if issubclass(dtypeobj, _nt.clongfloat):
+        if issubclass(dtypeobj, _nt.clongdouble):
             return formatdict['longcomplexfloat']()
         else:
             return formatdict['complexfloat']()
-    elif issubclass(dtypeobj, (_nt.unicode_, _nt.string_)):
+    elif issubclass(dtypeobj, (_nt.str_, _nt.bytes_)):
         return formatdict['numpystr']()
     elif issubclass(dtypeobj, _nt.datetime64):
         return formatdict['datetime']()
@@ -516,7 +567,7 @@ def _array2string_dispatcher(
         suppress_small=None, separator=None, prefix=None,
         style=None, formatter=None, threshold=None,
         edgeitems=None, sign=None, floatmode=None, suffix=None,
-        **kwarg):
+        *, legacy=None):
     return (a,)
 
 
@@ -525,13 +576,13 @@ def array2string(a, max_line_width=None, precision=None,
                  suppress_small=None, separator=' ', prefix="",
                  style=np._NoValue, formatter=None, threshold=None,
                  edgeitems=None, sign=None, floatmode=None, suffix="",
-                 **kwarg):
+                 *, legacy=None):
     """
     Return a string representation of an array.
 
     Parameters
     ----------
-    a : array_like
+    a : ndarray
         Input array.
     max_line_width : int, optional
         Inserts newlines if text is longer than `max_line_width`.
@@ -548,7 +599,7 @@ def array2string(a, max_line_width=None, precision=None,
     separator : str, optional
         Inserted between elements.
     prefix : str, optional
-    suffix: str, optional
+    suffix : str, optional
         The length of the prefix and suffix strings are used to respectively
         align and wrap the output. An array is typically printed as::
 
@@ -578,8 +629,7 @@ def array2string(a, max_line_width=None, precision=None,
         - 'complexfloat'
         - 'longcomplexfloat' : composed of two 128-bit floats
         - 'void' : type `numpy.void`
-        - 'numpystr' : types `numpy.string_` and `numpy.unicode_`
-        - 'str' : all other strings
+        - 'numpystr' : types `numpy.bytes_` and `numpy.str_`
 
         Other keys that can be used to set a group of types at once are:
 
@@ -587,7 +637,7 @@ def array2string(a, max_line_width=None, precision=None,
         - 'int_kind' : sets 'int'
         - 'float_kind' : sets 'float' and 'longfloat'
         - 'complex_kind' : sets 'complexfloat' and 'longcomplexfloat'
-        - 'str_kind' : sets 'str' and 'numpystr'
+        - 'str_kind' : sets 'numpystr'
     threshold : int, optional
         Total number of array elements which trigger summarization
         rather than full repr.
@@ -602,6 +652,11 @@ def array2string(a, max_line_width=None, precision=None,
         (whitespace character) in the sign position of positive values.  If
         '-', omit the sign character of positive values.
         Defaults to ``numpy.get_printoptions()['sign']``.
+
+        .. versionchanged:: 2.0
+             The sign parameter can now be an integer type, previously
+             types were floating-point types.
+
     floatmode : str, optional
         Controls the interpretation of the `precision` option for
         floating-point types.
@@ -670,10 +725,6 @@ def array2string(a, max_line_width=None, precision=None,
     '[0x0 0x1 0x2]'
 
     """
-    legacy = kwarg.pop('legacy', None)
-    if kwarg:
-        msg = "array2string() got unexpected keyword argument '{}'"
-        raise TypeError(msg.format(kwarg.popitem()[0]))
 
     overrides = _make_options_dict(precision, threshold, edgeitems,
                                    max_line_width, suppress_small, None, None,
@@ -681,7 +732,7 @@ def array2string(a, max_line_width=None, precision=None,
     options = _format_options.copy()
     options.update(overrides)
 
-    if options['legacy'] == '1.13':
+    if options['legacy'] <= 113:
         if style is np._NoValue:
             style = repr
 
@@ -691,9 +742,9 @@ def array2string(a, max_line_width=None, precision=None,
         # Deprecation 11-9-2017  v1.14
         warnings.warn("'style' argument is deprecated and no longer functional"
                       " except in 1.13 'legacy' mode",
-                      DeprecationWarning, stacklevel=3)
+                      DeprecationWarning, stacklevel=2)
 
-    if options['legacy'] != '1.13':
+    if options['legacy'] > 113:
         options['linewidth'] -= len(suffix)
 
     # treat as a null array if any of shape elements == 0
@@ -705,8 +756,8 @@ def array2string(a, max_line_width=None, precision=None,
 
 def _extendLine(s, line, word, line_width, next_line_prefix, legacy):
     needs_wrap = len(line) + len(word) > line_width
-    if legacy != '1.13':
-        s# don't wrap lines if it won't help
+    if legacy > 113:
+        # don't wrap lines if it won't help
         if len(line) <= len(next_line_prefix):
             needs_wrap = False
 
@@ -716,6 +767,33 @@ def _extendLine(s, line, word, line_width, next_line_prefix, legacy):
     line += word
     return s, line
 
+
+def _extendLine_pretty(s, line, word, line_width, next_line_prefix, legacy):
+    """
+    Extends line with nicely formatted (possibly multi-line) string ``word``.
+    """
+    words = word.splitlines()
+    if len(words) == 1 or legacy <= 113:
+        return _extendLine(s, line, word, line_width, next_line_prefix, legacy)
+
+    max_word_length = max(len(word) for word in words)
+    if (len(line) + max_word_length > line_width and
+            len(line) > len(next_line_prefix)):
+        s += line.rstrip() + '\n'
+        line = next_line_prefix + words[0]
+        indent = next_line_prefix
+    else:
+        indent = len(line)*' '
+        line += words[0]
+
+    for word in words[1::]:
+        s += line.rstrip() + '\n'
+        line = indent + word
+
+    suffix_length = max_word_length - len(words[-1])
+    line += suffix_length*' '
+
+    return s, line
 
 def _formatArray(a, format_function, line_width, next_line_prefix,
                  separator, edge_items, summary_insert, legacy):
@@ -741,7 +819,7 @@ def _formatArray(a, format_function, line_width, next_line_prefix,
         # when recursing, add a space to align with the [ added, and reduce the
         # length of the line by 1
         next_hanging_indent = hanging_indent + ' '
-        if legacy == '1.13':
+        if legacy <= 113:
             next_width = curr_width
         else:
             next_width = curr_width - len(']')
@@ -761,7 +839,7 @@ def _formatArray(a, format_function, line_width, next_line_prefix,
         # last axis (rows) - wrap elements if they would not fit on one line
         if axes_left == 1:
             # the length up until the beginning of the separator / bracket
-            if legacy == '1.13':
+            if legacy <= 113:
                 elem_width = curr_width - len(separator.rstrip())
             else:
                 elem_width = curr_width - max(len(separator.rstrip()), len(']'))
@@ -769,29 +847,29 @@ def _formatArray(a, format_function, line_width, next_line_prefix,
             line = hanging_indent
             for i in range(leading_items):
                 word = recurser(index + (i,), next_hanging_indent, next_width)
-                s, line = _extendLine(
+                s, line = _extendLine_pretty(
                     s, line, word, elem_width, hanging_indent, legacy)
                 line += separator
 
             if show_summary:
                 s, line = _extendLine(
                     s, line, summary_insert, elem_width, hanging_indent, legacy)
-                if legacy == '1.13':
+                if legacy <= 113:
                     line += ", "
                 else:
                     line += separator
 
             for i in range(trailing_items, 1, -1):
                 word = recurser(index + (-i,), next_hanging_indent, next_width)
-                s, line = _extendLine(
+                s, line = _extendLine_pretty(
                     s, line, word, elem_width, hanging_indent, legacy)
                 line += separator
 
-            if legacy == '1.13':
+            if legacy <= 113:
                 # width of the separator is not considered on 1.13
                 elem_width = curr_width
             word = recurser(index + (-1,), next_hanging_indent, next_width)
-            s, line = _extendLine(
+            s, line = _extendLine_pretty(
                 s, line, word, elem_width, hanging_indent, legacy)
 
             s += line
@@ -806,7 +884,7 @@ def _formatArray(a, format_function, line_width, next_line_prefix,
                 s += hanging_indent + nested + line_sep
 
             if show_summary:
-                if legacy == '1.13':
+                if legacy <= 113:
                     # trailing space, fixed nbr of newlines, and fixed separator
                     s += hanging_indent + summary_insert + ", \n"
                 else:
@@ -842,16 +920,16 @@ def _none_or_positive_arg(x, name):
         raise ValueError("{} must be >= 0".format(name))
     return x
 
-class FloatingFormat(object):
+class FloatingFormat:
     """ Formatter for subtypes of np.floating """
     def __init__(self, data, precision, floatmode, suppress_small, sign=False,
-                 **kwarg):
+                 *, legacy=None):
         # for backcompatibility, accept bools
         if isinstance(sign, bool):
             sign = '+' if sign else '-'
 
-        self._legacy = kwarg.get('legacy', False)
-        if self._legacy == '1.13':
+        self._legacy = legacy
+        if self._legacy <= 113:
             # when not 0d, legacy does not support '-'
             if data.shape != () and sign == '-':
                 sign = ' '
@@ -892,9 +970,10 @@ class FloatingFormat(object):
             self.trim = '.'
             self.exp_size = -1
             self.unique = True
+            self.min_digits = None
         elif self.exp_format:
             trim, unique = '.', True
-            if self.floatmode == 'fixed' or self._legacy == '1.13':
+            if self.floatmode == 'fixed' or self._legacy <= 113:
                 trim, unique = 'k', False
             strs = (dragon4_scientific(x, precision=self.precision,
                                unique=unique, trim=trim, sign=self.sign == '+')
@@ -905,19 +984,18 @@ class FloatingFormat(object):
 
             self.trim = 'k'
             self.precision = max(len(s) for s in frac_part)
+            self.min_digits = self.precision
+            self.unique = unique
 
             # for back-compat with np 1.13, use 2 spaces & sign and full prec
-            if self._legacy == '1.13':
+            if self._legacy <= 113:
                 self.pad_left = 3
             else:
                 # this should be only 1 or 2. Can be calculated from sign.
                 self.pad_left = max(len(s) for s in int_part)
             # pad_right is only needed for nan length calculation
             self.pad_right = self.exp_size + 2 + self.precision
-
-            self.unique = False
         else:
-            # first pass printing to determine sizes
             trim, unique = '.', True
             if self.floatmode == 'fixed':
                 trim, unique = 'k', False
@@ -927,22 +1005,22 @@ class FloatingFormat(object):
                                        sign=self.sign == '+')
                     for x in finite_vals)
             int_part, frac_part = zip(*(s.split('.') for s in strs))
-            if self._legacy == '1.13':
+            if self._legacy <= 113:
                 self.pad_left = 1 + max(len(s.lstrip('-+')) for s in int_part)
             else:
                 self.pad_left = max(len(s) for s in int_part)
             self.pad_right = max(len(s) for s in frac_part)
             self.exp_size = -1
+            self.unique = unique
 
             if self.floatmode in ['fixed', 'maxprec_equal']:
-                self.precision = self.pad_right
-                self.unique = False
+                self.precision = self.min_digits = self.pad_right
                 self.trim = 'k'
             else:
-                self.unique = True
                 self.trim = '.'
+                self.min_digits = 0
 
-        if self._legacy != '1.13':
+        if self._legacy > 113:
             # account for sign = ' ' by adding one to pad_left
             if self.sign == ' ' and not any(np.signbit(finite_vals)):
                 self.pad_left += 1
@@ -969,6 +1047,7 @@ class FloatingFormat(object):
         if self.exp_format:
             return dragon4_scientific(x,
                                       precision=self.precision,
+                                      min_digits=self.min_digits,
                                       unique=self.unique,
                                       trim=self.trim,
                                       sign=self.sign == '+',
@@ -977,6 +1056,7 @@ class FloatingFormat(object):
         else:
             return dragon4_positional(x,
                                       precision=self.precision,
+                                      min_digits=self.min_digits,
                                       unique=self.unique,
                                       fractional=True,
                                       trim=self.trim,
@@ -987,7 +1067,8 @@ class FloatingFormat(object):
 
 @set_module('numpy')
 def format_float_scientific(x, precision=None, unique=True, trim='k',
-                            sign=False, pad_left=None, exp_digits=None):
+                            sign=False, pad_left=None, exp_digits=None,
+                            min_digits=None):
     """
     Format a floating-point scalar as a decimal string in scientific notation.
 
@@ -1005,11 +1086,12 @@ def format_float_scientific(x, precision=None, unique=True, trim='k',
         If `True`, use a digit-generation strategy which gives the shortest
         representation which uniquely identifies the floating-point number from
         other values of the same type, by judicious rounding. If `precision`
-        was omitted, print all necessary digits, otherwise digit generation is
-        cut off after `precision` digits and the remaining value is rounded.
+        is given fewer digits than necessary can be printed. If `min_digits`
+        is given more can be printed, in which cases the last digit is rounded
+        with unbiased rounding.
         If `False`, digits are generated as if printing an infinite-precision
         value and stopping after `precision` digits, rounding the remaining
-        value.
+        value with unbiased rounding
     trim : one of 'k', '.', '0', '-', optional
         Controls post-processing trimming of trailing digits, as follows:
 
@@ -1026,6 +1108,12 @@ def format_float_scientific(x, precision=None, unique=True, trim='k',
     exp_digits : non-negative integer, optional
         Pad the exponent with zeros until it contains at least this many digits.
         If omitted, the exponent will be at least 2 digits.
+    min_digits : non-negative integer or None, optional
+        Minimum number of digits to print. This only has an effect for
+        `unique=True`. In that case more digits than necessary to uniquely
+        identify the value may be printed and rounded unbiased.
+
+        .. versionadded:: 1.21.0
 
     Returns
     -------
@@ -1049,15 +1137,18 @@ def format_float_scientific(x, precision=None, unique=True, trim='k',
     precision = _none_or_positive_arg(precision, 'precision')
     pad_left = _none_or_positive_arg(pad_left, 'pad_left')
     exp_digits = _none_or_positive_arg(exp_digits, 'exp_digits')
+    min_digits = _none_or_positive_arg(min_digits, 'min_digits')
+    if min_digits > 0 and precision > 0 and min_digits > precision:
+        raise ValueError("min_digits must be less than or equal to precision")
     return dragon4_scientific(x, precision=precision, unique=unique,
                               trim=trim, sign=sign, pad_left=pad_left,
-                              exp_digits=exp_digits)
+                              exp_digits=exp_digits, min_digits=min_digits)
 
 
 @set_module('numpy')
 def format_float_positional(x, precision=None, unique=True,
                             fractional=True, trim='k', sign=False,
-                            pad_left=None, pad_right=None):
+                            pad_left=None, pad_right=None, min_digits=None):
     """
     Format a floating-point scalar as a decimal string in positional notation.
 
@@ -1075,16 +1166,19 @@ def format_float_positional(x, precision=None, unique=True,
         If `True`, use a digit-generation strategy which gives the shortest
         representation which uniquely identifies the floating-point number from
         other values of the same type, by judicious rounding. If `precision`
-        was omitted, print out all necessary digits, otherwise digit generation
-        is cut off after `precision` digits and the remaining value is rounded.
+        is given fewer digits than necessary can be printed, or if `min_digits`
+        is given more can be printed, in which cases the last digit is rounded
+        with unbiased rounding.
         If `False`, digits are generated as if printing an infinite-precision
         value and stopping after `precision` digits, rounding the remaining
-        value.
+        value with unbiased rounding
     fractional : boolean, optional
-        If `True`, the cutoff of `precision` digits refers to the total number
-        of digits after the decimal point, including leading zeros.
-        If `False`, `precision` refers to the total number of significant
-        digits, before or after the decimal point, ignoring leading zeros.
+        If `True`, the cutoffs of `precision` and `min_digits` refer to the
+        total number of digits after the decimal point, including leading
+        zeros.
+        If `False`, `precision` and `min_digits` refer to the total number of
+        significant digits, before or after the decimal point, ignoring leading
+        zeros.
     trim : one of 'k', '.', '0', '-', optional
         Controls post-processing trimming of trailing digits, as follows:
 
@@ -1101,6 +1195,12 @@ def format_float_positional(x, precision=None, unique=True,
     pad_right : non-negative integer, optional
         Pad the right side of the string with whitespace until at least that
         many characters are to the right of the decimal point.
+    min_digits : non-negative integer or None, optional
+        Minimum number of digits to print. Only has an effect if `unique=True`
+        in which case additional digits past those necessary to uniquely
+        identify the value may be printed, rounding the last additional digit.
+
+        .. versionadded:: 1.21.0
 
     Returns
     -------
@@ -1125,26 +1225,37 @@ def format_float_positional(x, precision=None, unique=True,
     precision = _none_or_positive_arg(precision, 'precision')
     pad_left = _none_or_positive_arg(pad_left, 'pad_left')
     pad_right = _none_or_positive_arg(pad_right, 'pad_right')
+    min_digits = _none_or_positive_arg(min_digits, 'min_digits')
+    if not fractional and precision == 0:
+        raise ValueError("precision must be greater than 0 if "
+                         "fractional=False")
+    if min_digits > 0 and precision > 0 and min_digits > precision:
+        raise ValueError("min_digits must be less than or equal to precision")
     return dragon4_positional(x, precision=precision, unique=unique,
                               fractional=fractional, trim=trim,
                               sign=sign, pad_left=pad_left,
-                              pad_right=pad_right)
+                              pad_right=pad_right, min_digits=min_digits)
 
-
-class IntegerFormat(object):
-    def __init__(self, data):
+class IntegerFormat:
+    def __init__(self, data, sign='-'):
         if data.size > 0:
-            max_str_len = max(len(str(np.max(data))),
-                              len(str(np.min(data))))
+            data_max = np.max(data)
+            data_min = np.min(data)
+            data_max_str_len = len(str(data_max))
+            if sign == ' ' and data_min < 0:
+                sign = '-'
+            if data_max >= 0 and sign in "+ ":
+                data_max_str_len += 1
+            max_str_len = max(data_max_str_len,
+                              len(str(data_min)))
         else:
             max_str_len = 0
-        self.format = '%{}d'.format(max_str_len)
+        self.format = f'{{:{sign}{max_str_len}d}}'
 
     def __call__(self, x):
-        return self.format % x
+        return self.format.format(x)
 
-
-class BoolFormat(object):
+class BoolFormat:
     def __init__(self, data, **kwargs):
         # add an extra space so " True" and "False" have the same length and
         # array elements align nicely when printed, except in 0d arrays
@@ -1154,23 +1265,27 @@ class BoolFormat(object):
         return self.truestr if x else "False"
 
 
-class ComplexFloatingFormat(object):
+class ComplexFloatingFormat:
     """ Formatter for subtypes of np.complexfloating """
     def __init__(self, x, precision, floatmode, suppress_small,
-                 sign=False, **kwarg):
+                 sign=False, *, legacy=None):
         # for backcompatibility, accept bools
         if isinstance(sign, bool):
             sign = '+' if sign else '-'
 
         floatmode_real = floatmode_imag = floatmode
-        if kwarg.get('legacy', False) == '1.13':
+        if legacy <= 113:
             floatmode_real = 'maxprec_equal'
             floatmode_imag = 'maxprec'
 
-        self.real_format = FloatingFormat(x.real, precision, floatmode_real,
-                                          suppress_small, sign=sign, **kwarg)
-        self.imag_format = FloatingFormat(x.imag, precision, floatmode_imag,
-                                          suppress_small, sign='+', **kwarg)
+        self.real_format = FloatingFormat(
+            x.real, precision, floatmode_real, suppress_small,
+            sign=sign, legacy=legacy
+        )
+        self.imag_format = FloatingFormat(
+            x.imag, precision, floatmode_imag, suppress_small,
+            sign='+', legacy=legacy
+        )
 
     def __call__(self, x):
         r = self.real_format(x.real)
@@ -1183,7 +1298,7 @@ class ComplexFloatingFormat(object):
         return r + i
 
 
-class _TimelikeFormat(object):
+class _TimelikeFormat:
     def __init__(self, data):
         non_nat = data[~isnat(data)]
         if len(non_nat) > 0:
@@ -1227,12 +1342,12 @@ class DatetimeFormat(_TimelikeFormat):
         self.legacy = legacy
 
         # must be called after the above are configured
-        super(DatetimeFormat, self).__init__(x)
+        super().__init__(x)
 
     def __call__(self, x):
-        if self.legacy == '1.13':
+        if self.legacy <= 113:
             return self._format_non_nat(x)
-        return super(DatetimeFormat, self).__call__(x)
+        return super().__call__(x)
 
     def _format_non_nat(self, x):
         return "'%s'" % datetime_as_string(x,
@@ -1246,17 +1361,33 @@ class TimedeltaFormat(_TimelikeFormat):
         return str(x.astype('i8'))
 
 
-class SubArrayFormat(object):
-    def __init__(self, format_function):
+class SubArrayFormat:
+    def __init__(self, format_function, **options):
         self.format_function = format_function
+        self.threshold = options['threshold']
+        self.edge_items = options['edgeitems']
 
-    def __call__(self, arr):
-        if arr.ndim <= 1:
-            return "[" + ", ".join(self.format_function(a) for a in arr) + "]"
-        return "[" + ", ".join(self.__call__(a) for a in arr) + "]"
+    def __call__(self, a):
+        self.summary_insert = "..." if a.size > self.threshold else ""
+        return self.format_array(a)
+
+    def format_array(self, a):
+        if np.ndim(a) == 0:
+            return self.format_function(a)
+
+        if self.summary_insert and a.shape[0] > 2*self.edge_items:
+            formatted = (
+                [self.format_array(a_) for a_ in a[:self.edge_items]]
+                + [self.summary_insert]
+                + [self.format_array(a_) for a_ in a[-self.edge_items:]]
+            )
+        else:
+            formatted = [self.format_array(a_) for a_ in a]
+
+        return "[" + ", ".join(formatted) + "]"
 
 
-class StructuredVoidFormat(object):
+class StructuredVoidFormat:
     """
     Formatter for structured np.void objects.
 
@@ -1277,7 +1408,7 @@ class StructuredVoidFormat(object):
         for field_name in data.dtype.names:
             format_function = _get_format_function(data[field_name], **options)
             if data.dtype[field_name].shape != ():
-                format_function = SubArrayFormat(format_function)
+                format_function = SubArrayFormat(format_function, **options)
             format_functions.append(format_function)
         return cls(format_functions)
 
@@ -1292,20 +1423,30 @@ class StructuredVoidFormat(object):
             return "({})".format(", ".join(str_fields))
 
 
-def _void_scalar_repr(x):
+def _void_scalar_to_string(x, is_repr=True):
     """
     Implements the repr for structured-void scalars. It is called from the
     scalartypes.c.src code, and is placed here because it uses the elementwise
     formatters defined above.
     """
-    return StructuredVoidFormat.from_data(array(x), **_format_options)(x)
+    options = _format_options.copy()
+
+    if options["legacy"] <= 125:
+        return StructuredVoidFormat.from_data(array(x), **_format_options)(x)
+
+    if options.get('formatter') is None:
+        options['formatter'] = {}
+    options['formatter'].setdefault('float_kind', str)
+    val_repr = StructuredVoidFormat.from_data(array(x), **options)(x)
+    if not is_repr:
+        return val_repr
+    cls = type(x)
+    cls_fqn = cls.__module__.replace("numpy", "np") + "." + cls.__name__
+    void_dtype = np.dtype((np.void, x.dtype))
+    return f"{cls_fqn}({val_repr}, dtype={void_dtype!s})"
 
 
-_typelessdata = [int_, float_, complex_, bool_]
-if issubclass(intc, int):
-    _typelessdata.append(intc)
-if issubclass(longlong, int):
-    _typelessdata.append(longlong)
+_typelessdata = [int_, float64, complex128, bool_]
 
 
 def dtype_is_implied(dtype):
@@ -1334,11 +1475,15 @@ def dtype_is_implied(dtype):
     array([1, 2, 3], dtype=int8)
     """
     dtype = np.dtype(dtype)
-    if _format_options['legacy'] == '1.13' and dtype.type == bool_:
+    if _format_options['legacy'] <= 113 and dtype.type == bool_:
         return False
 
     # not just void types can be structured, and names are not part of the repr
     if dtype.names is not None:
+        return False
+
+    # should care about endianness *unless size is 1* (e.g., int8, bool)
+    if not dtype.isnative:
         return False
 
     return dtype.type in _typelessdata
@@ -1354,6 +1499,9 @@ def dtype_short_repr(dtype):
     >>> dt = np.int64([1, 2]).dtype
     >>> assert eval(dtype_short_repr(dt)) == dt
     """
+    if type(dtype).__repr__ != np.dtype.__repr__:
+        # TODO: Custom repr for user DTypes, logic should likely move.
+        return repr(dtype)
     if dtype.names is not None:
         # structured dtypes give a list or tuple repr
         return str(dtype)
@@ -1362,10 +1510,14 @@ def dtype_short_repr(dtype):
         return "'%s'" % str(dtype)
 
     typename = dtype.name
+    if not dtype.isnative:
+        # deal with cases like dtype('<u2') that are identical to an
+        # established dtype (in this case uint16)
+        # except that they have a different endianness.
+        return "'%s'" % str(dtype)
     # quote typenames which can't be represented as python variable names
     if typename and not (typename[0].isalpha() and typename.isalnum()):
         typename = repr(typename)
-
     return typename
 
 
@@ -1386,7 +1538,7 @@ def _array_repr_implementation(
     prefix = class_name + "("
     suffix = ")" if skipdtype else ","
 
-    if (_format_options['legacy'] == '1.13' and
+    if (_format_options['legacy'] <= 113 and
             arr.shape == () and not arr.dtype.names):
         lst = repr(arr.item())
     elif arr.size > 0 or arr.shape == (0,):
@@ -1407,7 +1559,7 @@ def _array_repr_implementation(
     # Note: This line gives the correct result even when rfind returns -1.
     last_line_len = len(arr_str) - (arr_str.rfind('\n') + 1)
     spacer = " "
-    if _format_options['legacy'] == '1.13':
+    if _format_options['legacy'] <= 113:
         if issubclass(arr.dtype.type, flexible):
             spacer = '\n' + ' '*len(class_name + "(")
     elif last_line_len + len(dtype_str) + 1 > max_line_width:
@@ -1470,14 +1622,18 @@ def array_repr(arr, max_line_width=None, precision=None, suppress_small=None):
         arr, max_line_width, precision, suppress_small)
 
 
-_guarded_str = _recursive_guard()(str)
+@_recursive_guard()
+def _guarded_repr_or_str(v):
+    if isinstance(v, bytes):
+        return repr(v)
+    return str(v)
 
 
 def _array_str_implementation(
         a, max_line_width=None, precision=None, suppress_small=None,
         array2string=array2string):
     """Internal version of array_str() that allows overriding array2string."""
-    if (_format_options['legacy'] == '1.13' and
+    if (_format_options['legacy'] <= 113 and
             a.shape == () and not a.dtype.names):
         return str(a.item())
 
@@ -1488,7 +1644,7 @@ def _array_str_implementation(
         # obtain a scalar and call str on it, avoiding problems for subclasses
         # for which indexing with () returns a 0d instead of a scalar by using
         # ndarray's getindex. Also guard against recursive 0d object arrays.
-        return _guarded_str(np.ndarray.__getitem__(a, ()))
+        return _guarded_repr_or_str(np.ndarray.__getitem__(a, ()))
 
     return array2string(a, max_line_width, precision, suppress_small, ' ', "")
 
@@ -1550,6 +1706,10 @@ def set_string_function(f, repr=True):
     """
     Set a Python function to be used when pretty printing arrays.
 
+    .. deprecated:: 2.0
+        Use `np.set_printoptions` instead with a formatter for custom
+        printing of NumPy objects.
+
     Parameters
     ----------
     f : function or None
@@ -1568,10 +1728,11 @@ def set_string_function(f, repr=True):
 
     Examples
     --------
+    >>> from numpy.core.arrayprint import set_string_function
     >>> def pprint(arr):
     ...     return 'HA! - What are you going to do now?'
     ...
-    >>> np.set_string_function(pprint)
+    >>> set_string_function(pprint)
     >>> a = np.arange(10)
     >>> a
     HA! - What are you going to do now?
@@ -1580,7 +1741,7 @@ def set_string_function(f, repr=True):
 
     We can reset the function to the default:
 
-    >>> np.set_string_function(None)
+    >>> set_string_function(None)
     >>> a
     array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 
@@ -1590,13 +1751,23 @@ def set_string_function(f, repr=True):
     equal to the length of the result of ``__str__()``.
 
     >>> x = np.arange(4)
-    >>> np.set_string_function(lambda x:'random', repr=False)
+    >>> set_string_function(lambda x:'random', repr=False)
     >>> x.__str__()
     'random'
     >>> x.__repr__()
     'array([0, 1, 2, 3])'
 
     """
+
+    # Deprecated in NumPy 2.0, 2023-07-11
+    warnings.warn(
+        "`set_string_function` is deprecated. Use `np.set_printoptions` "
+        "with a formatter for custom printing NumPy objects. "
+        "(deprecated in NumPy 2.0)",
+        DeprecationWarning,
+        stacklevel=2
+    )
+
     if f is None:
         if repr:
             return multiarray.set_string_function(_default_array_repr, 1)
@@ -1604,6 +1775,3 @@ def set_string_function(f, repr=True):
             return multiarray.set_string_function(_default_array_str, 0)
     else:
         return multiarray.set_string_function(f, repr)
-
-set_string_function(_default_array_str, False)
-set_string_function(_default_array_repr, True)

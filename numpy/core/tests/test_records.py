@@ -1,37 +1,27 @@
-from __future__ import division, absolute_import, print_function
-
-import sys
-try:
-    # Accessing collections abstract classes from collections
-    # has been deprecated since Python 3.3
-    import collections.abc as collections_abc
-except ImportError:
-    import collections as collections_abc
+import collections.abc
 import textwrap
+from io import BytesIO
 from os import path
+from pathlib import Path
+import pickle
+
 import pytest
 
 import numpy as np
-from numpy.compat import Path
 from numpy.testing import (
     assert_, assert_equal, assert_array_equal, assert_array_almost_equal,
-    assert_raises, temppath
+    assert_raises, temppath,
     )
-from numpy.compat import pickle
 
 
-class TestFromrecords(object):
+class TestFromrecords:
     def test_fromrecords(self):
         r = np.rec.fromrecords([[456, 'dbe', 1.2], [2, 'de', 1.3]],
                             names='col1,col2,col3')
         assert_equal(r[0].item(), (456, 'dbe', 1.2))
         assert_equal(r['col1'].dtype.kind, 'i')
-        if sys.version_info[0] >= 3:
-            assert_equal(r['col2'].dtype.kind, 'U')
-            assert_equal(r['col2'].dtype.itemsize, 12)
-        else:
-            assert_equal(r['col2'].dtype.kind, 'S')
-            assert_equal(r['col2'].dtype.itemsize, 3)
+        assert_equal(r['col2'].dtype.kind, 'U')
+        assert_equal(r['col2'].dtype.itemsize, 12)
         assert_equal(r['col3'].dtype.kind, 'f')
 
     def test_fromrecords_0len(self):
@@ -61,17 +51,29 @@ class TestFromrecords(object):
         assert_equal(r1, r2)
 
     def test_method_array(self):
-        r = np.rec.array(b'abcdefg' * 100, formats='i2,a3,i4', shape=3, byteorder='big')
+        r = np.rec.array(
+            b'abcdefg' * 100, formats='i2,S3,i4', shape=3, byteorder='big'
+        )
         assert_equal(r[1].item(), (25444, b'efg', 1633837924))
 
     def test_method_array2(self):
-        r = np.rec.array([(1, 11, 'a'), (2, 22, 'b'), (3, 33, 'c'), (4, 44, 'd'), (5, 55, 'ex'),
-                     (6, 66, 'f'), (7, 77, 'g')], formats='u1,f4,a1')
+        r = np.rec.array(
+            [
+                (1, 11, 'a'), (2, 22, 'b'), (3, 33, 'c'), (4, 44, 'd'),
+                (5, 55, 'ex'), (6, 66, 'f'), (7, 77, 'g')
+            ],
+            formats='u1,f4,S1'
+        )
         assert_equal(r[1].item(), (2, 22.0, b'b'))
 
     def test_recarray_slices(self):
-        r = np.rec.array([(1, 11, 'a'), (2, 22, 'b'), (3, 33, 'c'), (4, 44, 'd'), (5, 55, 'ex'),
-                     (6, 66, 'f'), (7, 77, 'g')], formats='u1,f4,a1')
+        r = np.rec.array(
+            [
+                (1, 11, 'a'), (2, 22, 'b'), (3, 33, 'c'), (4, 44, 'd'),
+                (5, 55, 'ex'), (6, 66, 'f'), (7, 77, 'g')
+            ],
+            formats='u1,f4,S1'
+        )
         assert_equal(r[1::2][1].item(), (4, 44.0, b'd'))
 
     def test_recarray_fromarrays(self):
@@ -88,11 +90,19 @@ class TestFromrecords(object):
         filename = path.join(data_dir, 'recarray_from_file.fits')
         fd = open(filename, 'rb')
         fd.seek(2880 * 2)
-        r1 = np.rec.fromfile(fd, formats='f8,i4,a5', shape=3, byteorder='big')
+        r1 = np.rec.fromfile(fd, formats='f8,i4,S5', shape=3, byteorder='big')
         fd.seek(2880 * 2)
-        r2 = np.rec.array(fd, formats='f8,i4,a5', shape=3, byteorder='big')
+        r2 = np.rec.array(fd, formats='f8,i4,S5', shape=3, byteorder='big')
+        fd.seek(2880 * 2)
+        bytes_array = BytesIO()
+        bytes_array.write(fd.read())
+        bytes_array.seek(0)
+        r3 = np.rec.fromfile(
+            bytes_array, formats='f8,i4,S5', shape=3, byteorder='big'
+        )
         fd.close()
         assert_equal(r1, r2)
+        assert_equal(r2, r3)
 
     def test_recarray_from_obj(self):
         count = 10
@@ -136,7 +146,9 @@ class TestFromrecords(object):
                       dtype=[('f0', '<i4'), ('f1', '<f8'), ('f2', '<M8[Y]')])"""))
 
         record = arr_0d[()]
-        assert_equal(repr(record), "(1, 2., '2003')")
+        assert_equal(repr(record), 
+            "np.record((1, 2.0, '2003'), "
+            "dtype=[('f0', '<i4'), ('f1', '<f8'), ('f2', '<M8[Y]')])")
         # 1.13 converted to python scalars before the repr
         try:
             np.set_printoptions(legacy='1.13')
@@ -151,9 +163,10 @@ class TestFromrecords(object):
         recarr = a.view(np.recarray)
         recordview = a.view(np.dtype((np.record, a.dtype)))
 
-        recordarr_r = eval("numpy." + repr(recordarr), {'numpy': np})
-        recarr_r = eval("numpy." + repr(recarr), {'numpy': np})
-        recordview_r = eval("numpy." + repr(recordview), {'numpy': np})
+        recordarr_r = eval("np." + repr(recordarr), {'np': np})
+        recarr_r = eval("np." + repr(recarr), {'np': np})
+        # Prints the type `numpy.record` as part of the dtype:
+        recordview_r = eval("np." + repr(recordview), {'np': np, 'numpy': np})
 
         assert_equal(type(recordarr_r), np.recarray)
         assert_equal(recordarr_r.dtype.type, np.record)
@@ -258,7 +271,7 @@ class TestFromrecords(object):
         assert_array_equal(ra['shape'], [['A', 'B', 'C']])
         ra.field = 5
         assert_array_equal(ra['field'], [[5, 5, 5]])
-        assert_(isinstance(ra.field, collections_abc.Callable))
+        assert_(isinstance(ra.field, collections.abc.Callable))
 
     def test_fromrecords_with_explicit_dtype(self):
         a = np.rec.fromrecords([(1, 'a'), (2, 'bbb')],
@@ -325,25 +338,24 @@ class TestFromrecords(object):
         assert_equal(rec['f1'], [b'', b'', b''])
 
 
-@pytest.mark.skipif(Path is None, reason="No pathlib.Path")
-class TestPathUsage(object):
+class TestPathUsage:
     # Test that pathlib.Path can be used
     def test_tofile_fromfile(self):
         with temppath(suffix='.bin') as path:
             path = Path(path)
             np.random.seed(123)
-            a = np.random.rand(10).astype('f8,i4,a5')
+            a = np.random.rand(10).astype('f8,i4,S5')
             a[5] = (0.5,10,'abcde')
             with path.open("wb") as fd:
                 a.tofile(fd)
             x = np.core.records.fromfile(path,
-                                         formats='f8,i4,a5',
+                                         formats='f8,i4,S5',
                                          shape=10)
             assert_array_equal(x, a)
 
 
-class TestRecord(object):
-    def setup(self):
+class TestRecord:
+    def setup_method(self):
         self.data = np.rec.fromrecords([(1, 2, 3), (4, 5, 6)],
                             dtype=[("col1", "<i4"),
                                    ("col2", "<i4"),
@@ -416,14 +428,41 @@ class TestRecord(object):
             assert_(pa.flags.writeable)
             assert_(pa.flags.aligned)
 
+    def test_pickle_void(self):
+        # issue gh-13593
+        dt = np.dtype([('obj', 'O'), ('int', 'i')])
+        a = np.empty(1, dtype=dt)
+        data = (bytearray(b'eman'),)
+        a['obj'] = data
+        a['int'] = 42
+        ctor, args = a[0].__reduce__()
+        # check the constructor is what we expect before interpreting the arguments
+        assert ctor is np.core.multiarray.scalar
+        dtype, obj = args
+        # make sure we did not pickle the address
+        assert not isinstance(obj, bytes)
+
+        assert_raises(RuntimeError, ctor, dtype, 13)
+
+        # Test roundtrip:
+        dump = pickle.dumps(a[0])
+        unpickled = pickle.loads(dump)
+        assert a[0] == unpickled
+
+        # Also check the similar (impossible) "object scalar" path:
+        with pytest.warns(DeprecationWarning):
+            assert ctor(np.dtype("O"), data) is data
+
     def test_objview_record(self):
         # https://github.com/numpy/numpy/issues/2599
         dt = np.dtype([('foo', 'i8'), ('bar', 'O')])
-        r = np.zeros((1,3), dtype=dt).view(np.recarray)
+        r = np.zeros((1, 3), dtype=dt).view(np.recarray)
         r.foo = np.array([1, 2, 3])  # TypeError?
 
         # https://github.com/numpy/numpy/issues/3256
-        ra = np.recarray((2,), dtype=[('x', object), ('y', float), ('z', int)])
+        ra = np.recarray(
+            (2,), dtype=[('x', object), ('y', float), ('z', int)]
+        )
         ra[['x','y']]  # TypeError?
 
     def test_record_scalar_setitem(self):

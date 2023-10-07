@@ -1,16 +1,19 @@
 """Tests for the array padding functions.
 
 """
-from __future__ import division, absolute_import, print_function
-from itertools import chain
-
 import pytest
 
 import numpy as np
 from numpy.testing import assert_array_equal, assert_allclose, assert_equal
-from numpy.lib.arraypad import _as_pairs
+from numpy.lib._arraypad_impl import _as_pairs
 
 
+_numeric_dtypes = (
+    np.core.sctypes["uint"]
+    + np.core.sctypes["int"]
+    + np.core.sctypes["float"]
+    + np.core.sctypes["complex"]
+)
 _all_modes = {
     'constant': {'constant_values': 0},
     'edge': {},
@@ -26,7 +29,7 @@ _all_modes = {
 }
 
 
-class TestAsPairs(object):
+class TestAsPairs:
     def test_single_value(self):
         """Test casting for a single value."""
         expected = np.array([[3, 3]] * 10)
@@ -109,7 +112,7 @@ class TestAsPairs(object):
             _as_pairs(np.ones((2, 3)), 3)
 
 
-class TestConditionalShortcuts(object):
+class TestConditionalShortcuts:
     @pytest.mark.parametrize("mode", _all_modes.keys())
     def test_zero_padding_shortcuts(self, mode):
         test = np.arange(120).reshape(4, 5, 6)
@@ -131,7 +134,7 @@ class TestConditionalShortcuts(object):
                            np.pad(test, pad_amt, mode=mode, stat_length=30))
 
 
-class TestStatistic(object):
+class TestStatistic:
     def test_check_mean_stat_length(self):
         a = np.arange(100).astype('f')
         a = np.pad(a, ((25, 20), ), 'mean', stat_length=((2, 3), ))
@@ -471,8 +474,7 @@ class TestStatistic(object):
 
     @pytest.mark.filterwarnings("ignore:Mean of empty slice:RuntimeWarning")
     @pytest.mark.filterwarnings(
-        "ignore:invalid value encountered in (true_divide|double_scalars):"
-        "RuntimeWarning"
+        "ignore:invalid value encountered in( scalar)? divide:RuntimeWarning"
     )
     @pytest.mark.parametrize("mode", ["mean", "median"])
     def test_zero_stat_length_valid(self, mode):
@@ -493,7 +495,7 @@ class TestStatistic(object):
             np.pad([1., 2.], 1, mode, stat_length=(1, 0))
 
 
-class TestConstant(object):
+class TestConstant:
     def test_check_constant(self):
         a = np.arange(100)
         a = np.pad(a, (25, 20), 'constant', constant_values=(10, 20))
@@ -626,7 +628,7 @@ class TestConstant(object):
 
     def test_check_constant_pad_2d(self):
         arr = np.arange(4).reshape(2, 2)
-        test = np.lib.pad(arr, ((1, 2), (1, 3)), mode='constant',
+        test = np.pad(arr, ((1, 2), (1, 3)), mode='constant',
                           constant_values=((1, 2), (3, 4)))
         expected = np.array(
             [[3, 1, 1, 4, 4, 4],
@@ -672,7 +674,7 @@ class TestConstant(object):
         assert result.shape == (3, 4, 4)
 
 
-class TestLinearRamp(object):
+class TestLinearRamp:
     def test_check_simple(self):
         a = np.arange(100).astype('f')
         a = np.pad(a, (25, 20), 'linear_ramp', end_values=(4, 5))
@@ -738,8 +740,26 @@ class TestLinearRamp(object):
         assert_equal(a[0, :], 0.)
         assert_equal(a[-1, :], 0.)
 
+    @pytest.mark.parametrize("dtype", _numeric_dtypes)
+    def test_negative_difference(self, dtype):
+        """
+        Check correct behavior of unsigned dtypes if there is a negative
+        difference between the edge to pad and `end_values`. Check both cases
+        to be independent of implementation. Test behavior for all other dtypes
+        in case dtype casting interferes with complex dtypes. See gh-14191.
+        """
+        x = np.array([3], dtype=dtype)
+        result = np.pad(x, 3, mode="linear_ramp", end_values=0)
+        expected = np.array([0, 1, 2, 3, 2, 1, 0], dtype=dtype)
+        assert_equal(result, expected)
 
-class TestReflect(object):
+        x = np.array([0], dtype=dtype)
+        result = np.pad(x, 3, mode="linear_ramp", end_values=3)
+        expected = np.array([3, 2, 1, 0, 1, 2, 3], dtype=dtype)
+        assert_equal(result, expected)
+
+
+class TestReflect:
     def test_check_simple(self):
         a = np.arange(100)
         a = np.pad(a, (25, 20), 'reflect')
@@ -849,7 +869,7 @@ class TestReflect(object):
         assert_array_equal(a, b)
 
 
-class TestEmptyArray(object):
+class TestEmptyArray:
     """Check how padding behaves on arrays with an empty dimension."""
 
     @pytest.mark.parametrize(
@@ -873,7 +893,7 @@ class TestEmptyArray(object):
         assert result.shape == (8, 0, 4)
 
 
-class TestSymmetric(object):
+class TestSymmetric:
     def test_check_simple(self):
         a = np.arange(100)
         a = np.pad(a, (25, 20), 'symmetric')
@@ -1007,7 +1027,7 @@ class TestSymmetric(object):
         assert_array_equal(a, b)
 
 
-class TestWrap(object):
+class TestWrap:
     def test_check_simple(self):
         a = np.arange(100)
         a = np.pad(a, (25, 20), 'wrap')
@@ -1119,9 +1139,26 @@ class TestWrap(object):
         a = np.arange(5)
         b = np.pad(a, (0, 12), mode="wrap")
         assert_array_equal(np.r_[a, a, a, a][:-3], b)
+    
+    def test_repeated_wrapping_multiple_origin(self):
+        """
+        Assert that 'wrap' pads only with multiples of the original area if
+        the pad width is larger than the original array.
+        """
+        a = np.arange(4).reshape(2, 2)
+        a = np.pad(a, [(1, 3), (3, 1)], mode='wrap')
+        b = np.array(
+            [[3, 2, 3, 2, 3, 2],
+             [1, 0, 1, 0, 1, 0],
+             [3, 2, 3, 2, 3, 2],
+             [1, 0, 1, 0, 1, 0],
+             [3, 2, 3, 2, 3, 2],
+             [1, 0, 1, 0, 1, 0]]
+        )
+        assert_array_equal(a, b)
 
 
-class TestEdge(object):
+class TestEdge:
     def test_check_simple(self):
         a = np.arange(12)
         a = np.reshape(a, (4, 3))
@@ -1160,7 +1197,7 @@ class TestEdge(object):
         assert_array_equal(padded, expected)
 
 
-class TestEmpty(object):
+class TestEmpty:
     def test_simple(self):
         arr = np.arange(24).reshape(4, 6)
         result = np.pad(arr, [(2, 3), (3, 1)], mode="empty")
@@ -1194,7 +1231,7 @@ def test_legacy_vector_functionality():
 
 
 def test_unicode_mode():
-    a = np.pad([1], 2, mode=u'constant')
+    a = np.pad([1], 2, mode='constant')
     b = np.array([0, 0, 1, 0, 0])
     assert_array_equal(a, b)
 
@@ -1208,7 +1245,7 @@ def test_object_input(mode):
     assert_array_equal(np.pad(a, pad_amt, mode=mode), b)
 
 
-class TestPadWidth(object):
+class TestPadWidth:
     @pytest.mark.parametrize("pad_width", [
         (4, 5, 6, 7),
         ((1,), (2,), (3,)),
@@ -1239,24 +1276,29 @@ class TestPadWidth(object):
         with pytest.raises(ValueError, match=match):
             np.pad(arr, pad_width, mode)
 
-    @pytest.mark.parametrize("pad_width", [
-        "3",
-        "word",
-        None,
-        object(),
-        3.4,
-        ((2, 3, 4), (3, 2)),  # dtype=object (tuple)
-        complex(1, -1),
-        ((-2.1, 3), (3, 2)),
+    @pytest.mark.parametrize("pad_width, dtype", [
+        ("3", None),
+        ("word", None),
+        (None, None),
+        (object(), None),
+        (3.4, None),
+        (((2, 3, 4), (3, 2)), object),
+        (complex(1, -1), None),
+        (((-2.1, 3), (3, 2)), None),
     ])
     @pytest.mark.parametrize("mode", _all_modes.keys())
-    def test_bad_type(self, pad_width, mode):
+    def test_bad_type(self, pad_width, dtype, mode):
         arr = np.arange(30).reshape((6, 5))
         match = "`pad_width` must be of integral type."
-        with pytest.raises(TypeError, match=match):
-            np.pad(arr, pad_width, mode)
-        with pytest.raises(TypeError, match=match):
-            np.pad(arr, np.array(pad_width), mode)
+        if dtype is not None:
+            # avoid DeprecationWarning when not specifying dtype
+            with pytest.raises(TypeError, match=match):
+                np.pad(arr, np.array(pad_width, dtype=dtype), mode)
+        else:
+            with pytest.raises(TypeError, match=match):
+                np.pad(arr, pad_width, mode)
+            with pytest.raises(TypeError, match=match):
+                np.pad(arr, np.array(pad_width), mode)
 
     def test_pad_width_as_ndarray(self):
         a = np.arange(12)
@@ -1330,13 +1372,7 @@ def test_memory_layout_persistence(mode):
     assert np.pad(x, 5, mode).flags["F_CONTIGUOUS"]
 
 
-@pytest.mark.parametrize("dtype", chain(
-    # Skip "other" dtypes as they are not supported by all modes
-    np.sctypes["int"],
-    np.sctypes["uint"],
-    np.sctypes["float"],
-    np.sctypes["complex"]
-))
+@pytest.mark.parametrize("dtype", _numeric_dtypes)
 @pytest.mark.parametrize("mode", _all_modes.keys())
 def test_dtype_persistence(dtype, mode):
     arr = np.zeros((3, 2, 1), dtype=dtype)

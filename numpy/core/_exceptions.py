@@ -5,7 +5,7 @@ in python where it's easier.
 By putting the formatting in `__str__`, we also avoid paying the cost for
 users who silence the exceptions.
 """
-from numpy.core.overrides import set_module
+from .._utils import set_module
 
 def _unpack_tuple(tup):
     if len(tup) == 1:
@@ -26,7 +26,6 @@ def _display_as_base(cls):
     """
     assert issubclass(cls, Exception)
     cls.__name__ = cls.__base__.__name__
-    cls.__qualname__ = cls.__base__.__qualname__
     return cls
 
 
@@ -34,22 +33,6 @@ class UFuncTypeError(TypeError):
     """ Base class for all ufunc exceptions """
     def __init__(self, ufunc):
         self.ufunc = ufunc
-
-
-@_display_as_base
-class _UFuncBinaryResolutionError(UFuncTypeError):
-    """ Thrown when a binary resolution fails """
-    def __init__(self, ufunc, dtypes):
-        super().__init__(ufunc)
-        self.dtypes = tuple(dtypes)
-        assert len(self.dtypes) == 2
-
-    def __str__(self):
-        return (
-            "ufunc {!r} cannot use operands with types {!r} and {!r}"
-        ).format(
-            self.ufunc.__name__, *self.dtypes
-        )
 
 
 @_display_as_base
@@ -67,6 +50,21 @@ class _UFuncNoLoopError(UFuncTypeError):
             self.ufunc.__name__,
             _unpack_tuple(self.dtypes[:self.ufunc.nin]),
             _unpack_tuple(self.dtypes[self.ufunc.nin:])
+        )
+
+
+@_display_as_base
+class _UFuncBinaryResolutionError(_UFuncNoLoopError):
+    """ Thrown when a binary resolution fails """
+    def __init__(self, ufunc, dtypes):
+        super().__init__(ufunc, dtypes)
+        assert len(self.dtypes) == 2
+
+    def __str__(self):
+        return (
+            "ufunc {!r} cannot use operands with types {!r} and {!r}"
+        ).format(
+            self.ufunc.__name__, *self.dtypes
         )
 
 
@@ -115,30 +113,6 @@ class _UFuncOutputCastingError(_UFuncCastingError):
         )
 
 
-# Exception used in shares_memory()
-@set_module('numpy')
-class TooHardError(RuntimeError):
-    pass
-
-
-@set_module('numpy')
-class AxisError(ValueError, IndexError):
-    """ Axis supplied was invalid. """
-    def __init__(self, axis, ndim=None, msg_prefix=None):
-        # single-argument form just delegates to base class
-        if ndim is None and msg_prefix is None:
-            msg = axis
-
-        # do the string formatting here, to save work in the C code
-        else:
-            msg = ("axis {} is out of bounds for array of dimension {}"
-                   .format(axis, ndim))
-            if msg_prefix is not None:
-                msg = "{}: {}".format(msg_prefix, msg)
-
-        super(AxisError, self).__init__(msg)
-
-
 @_display_as_base
 class _ArrayMemoryError(MemoryError):
     """ Thrown when an array cannot be allocated"""
@@ -146,6 +120,53 @@ class _ArrayMemoryError(MemoryError):
         self.shape = shape
         self.dtype = dtype
 
-    def __str__(self):
-        return "Unable to allocate array with shape {} and data type {}".format(self.shape, self.dtype)
+    @property
+    def _total_size(self):
+        num_bytes = self.dtype.itemsize
+        for dim in self.shape:
+            num_bytes *= dim
+        return num_bytes
 
+    @staticmethod
+    def _size_to_string(num_bytes):
+        """ Convert a number of bytes into a binary size string """
+
+        # https://en.wikipedia.org/wiki/Binary_prefix
+        LOG2_STEP = 10
+        STEP = 1024
+        units = ['bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB']
+
+        unit_i = max(num_bytes.bit_length() - 1, 1) // LOG2_STEP
+        unit_val = 1 << (unit_i * LOG2_STEP)
+        n_units = num_bytes / unit_val
+        del unit_val
+
+        # ensure we pick a unit that is correct after rounding
+        if round(n_units) == STEP:
+            unit_i += 1
+            n_units /= STEP
+
+        # deal with sizes so large that we don't have units for them
+        if unit_i >= len(units):
+            new_unit_i = len(units) - 1
+            n_units *= 1 << ((unit_i - new_unit_i) * LOG2_STEP)
+            unit_i = new_unit_i
+
+        unit_name = units[unit_i]
+        # format with a sensible number of digits
+        if unit_i == 0:
+            # no decimal point on bytes
+            return '{:.0f} {}'.format(n_units, unit_name)
+        elif round(n_units) < 1000:
+            # 3 significant figures, if none are dropped to the left of the .
+            return '{:#.3g} {}'.format(n_units, unit_name)
+        else:
+            # just give all the digits otherwise
+            return '{:#.0f} {}'.format(n_units, unit_name)
+
+    def __str__(self):
+        size_str = self._size_to_string(self._total_size)
+        return (
+            "Unable to allocate {} for an array with shape {} and data type {}"
+            .format(size_str, self.shape, self.dtype)
+        )

@@ -1,52 +1,34 @@
-from __future__ import division, absolute_import, print_function
-
-import sys
+import pytest
 
 import numpy as np
-from numpy.compat import unicode
 from numpy.testing import assert_, assert_equal, assert_array_equal
 
-# Guess the UCS length for this python interpreter
-if sys.version_info[:2] >= (3, 3):
-    # Python 3.3 uses a flexible string representation
-    ucs4 = False
-
-    def buffer_length(arr):
-        if isinstance(arr, unicode):
-            arr = str(arr)
-            if not arr:
-                charmax = 0
-            else:
-                charmax = max([ord(c) for c in arr])
-            if charmax < 256:
-                size = 1
-            elif charmax < 65536:
-                size = 2
-            else:
-                size = 4
-            return size * len(arr)
-        v = memoryview(arr)
-        if v.shape is None:
-            return len(v) * v.itemsize
+def buffer_length(arr):
+    if isinstance(arr, str):
+        if not arr:
+            charmax = 0
         else:
-            return np.prod(v.shape) * v.itemsize
-else:
-    if len(buffer(u'u')) == 4:
-        ucs4 = True
+            charmax = max([ord(c) for c in arr])
+        if charmax < 256:
+            size = 1
+        elif charmax < 65536:
+            size = 2
+        else:
+            size = 4
+        return size * len(arr)
+    v = memoryview(arr)
+    if v.shape is None:
+        return len(v) * v.itemsize
     else:
-        ucs4 = False
+        return np.prod(v.shape) * v.itemsize
 
-    def buffer_length(arr):
-        if isinstance(arr, np.ndarray):
-            return len(arr.data)
-        return len(buffer(arr))
 
 # In both cases below we need to make sure that the byte swapped value (as
 # UCS4) is still a valid unicode:
 # Value that can be represented in UCS2 interpreters
-ucs2_value = u'\u0900'
+ucs2_value = '\u0900'
 # Value that cannot be represented in UCS2 interpreters (but can in UCS4)
-ucs4_value = u'\U00100900'
+ucs4_value = '\U00100900'
 
 
 def test_string_cast():
@@ -54,12 +36,11 @@ def test_string_cast():
     uni_arr1 = str_arr.astype('>U')
     uni_arr2 = str_arr.astype('<U')
 
-    if sys.version_info[0] < 3:
-        assert_array_equal(str_arr, uni_arr1)
-        assert_array_equal(str_arr, uni_arr2)
-    else:
-        assert_(str_arr != uni_arr1)
-        assert_(str_arr != uni_arr2)
+    assert_array_equal(str_arr != uni_arr1, np.ones(2, dtype=bool))
+    assert_array_equal(uni_arr1 != str_arr, np.ones(2, dtype=bool))
+    assert_array_equal(str_arr == uni_arr1, np.zeros(2, dtype=bool))
+    assert_array_equal(uni_arr1 == str_arr, np.zeros(2, dtype=bool))
+
     assert_array_equal(uni_arr1, uni_arr2)
 
 
@@ -67,7 +48,7 @@ def test_string_cast():
 #    Creation tests
 ############################################################
 
-class CreateZeros(object):
+class CreateZeros:
     """Check the creation of zero-valued arrays"""
 
     def content_check(self, ua, ua_scalar, nbytes):
@@ -77,14 +58,11 @@ class CreateZeros(object):
         # Check the length of the data buffer
         assert_(buffer_length(ua) == nbytes)
         # Small check that data in array element is ok
-        assert_(ua_scalar == u'')
+        assert_(ua_scalar == '')
         # Encode to ascii and double check
         assert_(ua_scalar.encode('ascii') == b'')
         # Check buffer lengths for scalars
-        if ucs4:
-            assert_(buffer_length(ua_scalar) == 0)
-        else:
-            assert_(buffer_length(ua_scalar) == 0)
+        assert_(buffer_length(ua_scalar) == 0)
 
     def test_zeros0D(self):
         # Check creation of 0-dimensional objects
@@ -119,7 +97,7 @@ class TestCreateZeros_1009(CreateZeros):
     ulen = 1009
 
 
-class CreateValues(object):
+class CreateValues:
     """Check the creation of unicode arrays with values"""
 
     def content_check(self, ua, ua_scalar, nbytes):
@@ -134,17 +112,14 @@ class CreateValues(object):
         assert_(ua_scalar.encode('utf-8') ==
                         (self.ucs_value*self.ulen).encode('utf-8'))
         # Check buffer lengths for scalars
-        if ucs4:
-            assert_(buffer_length(ua_scalar) == 4*self.ulen)
+        if self.ucs_value == ucs4_value:
+            # In UCS2, the \U0010FFFF will be represented using a
+            # surrogate *pair*
+            assert_(buffer_length(ua_scalar) == 2*2*self.ulen)
         else:
-            if self.ucs_value == ucs4_value:
-                # In UCS2, the \U0010FFFF will be represented using a
-                # surrogate *pair*
-                assert_(buffer_length(ua_scalar) == 2*2*self.ulen)
-            else:
-                # In UCS2, the \uFFFF will be represented using a
-                # regular 2-byte word
-                assert_(buffer_length(ua_scalar) == 2*self.ulen)
+            # In UCS2, the \uFFFF will be represented using a
+            # regular 2-byte word
+            assert_(buffer_length(ua_scalar) == 2*self.ulen)
 
     def test_values0D(self):
         # Check creation of 0-dimensional objects with values
@@ -204,7 +179,7 @@ class TestCreateValues_1009_UCS4(CreateValues):
 #    Assignment tests
 ############################################################
 
-class AssignValues(object):
+class AssignValues:
     """Check the assignment of unicode arrays with values"""
 
     def content_check(self, ua, ua_scalar, nbytes):
@@ -219,17 +194,14 @@ class AssignValues(object):
         assert_(ua_scalar.encode('utf-8') ==
                         (self.ucs_value*self.ulen).encode('utf-8'))
         # Check buffer lengths for scalars
-        if ucs4:
-            assert_(buffer_length(ua_scalar) == 4*self.ulen)
+        if self.ucs_value == ucs4_value:
+            # In UCS2, the \U0010FFFF will be represented using a
+            # surrogate *pair*
+            assert_(buffer_length(ua_scalar) == 2*2*self.ulen)
         else:
-            if self.ucs_value == ucs4_value:
-                # In UCS2, the \U0010FFFF will be represented using a
-                # surrogate *pair*
-                assert_(buffer_length(ua_scalar) == 2*2*self.ulen)
-            else:
-                # In UCS2, the \uFFFF will be represented using a
-                # regular 2-byte word
-                assert_(buffer_length(ua_scalar) == 2*self.ulen)
+            # In UCS2, the \uFFFF will be represented using a
+            # regular 2-byte word
+            assert_(buffer_length(ua_scalar) == 2*self.ulen)
 
     def test_values0D(self):
         # Check assignment of 0-dimensional objects with values
@@ -294,28 +266,28 @@ class TestAssignValues_1009_UCS4(AssignValues):
 #    Byteorder tests
 ############################################################
 
-class ByteorderValues(object):
+class ByteorderValues:
     """Check the byteorder of unicode arrays in round-trip conversions"""
 
     def test_values0D(self):
         # Check byteorder of 0-dimensional objects
         ua = np.array(self.ucs_value*self.ulen, dtype='U%s' % self.ulen)
-        ua2 = ua.newbyteorder()
+        ua2 = ua.view(ua.dtype.newbyteorder())
         # This changes the interpretation of the data region (but not the
         #  actual data), therefore the returned scalars are not
         #  the same (they are byte-swapped versions of each other).
         assert_(ua[()] != ua2[()])
-        ua3 = ua2.newbyteorder()
+        ua3 = ua2.view(ua2.dtype.newbyteorder())
         # Arrays must be equal after the round-trip
         assert_equal(ua, ua3)
 
     def test_valuesSD(self):
         # Check byteorder of single-dimensional objects
         ua = np.array([self.ucs_value*self.ulen]*2, dtype='U%s' % self.ulen)
-        ua2 = ua.newbyteorder()
+        ua2 = ua.view(ua.dtype.newbyteorder())
         assert_((ua != ua2).all())
         assert_(ua[-1] != ua2[-1])
-        ua3 = ua2.newbyteorder()
+        ua3 = ua2.view(ua2.dtype.newbyteorder())
         # Arrays must be equal after the round-trip
         assert_equal(ua, ua3)
 
@@ -323,10 +295,10 @@ class ByteorderValues(object):
         # Check byteorder of multi-dimensional objects
         ua = np.array([[[self.ucs_value*self.ulen]*2]*3]*4,
                       dtype='U%s' % self.ulen)
-        ua2 = ua.newbyteorder()
+        ua2 = ua.view(ua.dtype.newbyteorder())
         assert_((ua != ua2).all())
         assert_(ua[-1, -1, -1] != ua2[-1, -1, -1])
-        ua3 = ua2.newbyteorder()
+        ua3 = ua2.view(ua2.dtype.newbyteorder())
         # Arrays must be equal after the round-trip
         assert_equal(ua, ua3)
 

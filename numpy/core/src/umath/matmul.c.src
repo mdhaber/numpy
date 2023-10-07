@@ -1,10 +1,10 @@
 /* -*- c -*- */
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
 
 #define _UMATHMODULE
 #define _MULTIARRAYMODULE
 #define NPY_NO_DEPRECATED_API NPY_API_VERSION
-
-#include "Python.h"
 
 #include "npy_config.h"
 #include "numpy/npy_common.h"
@@ -27,11 +27,16 @@
  *****************************************************************************
  */
 
+#if defined(HAVE_CBLAS)
 /*
  * -1 to be conservative, in case blas internally uses a for loop with an
  * inclusive upper bound
  */
+#ifndef HAVE_BLAS_ILP64
 #define BLAS_MAXSIZE (NPY_MAX_INT - 1)
+#else
+#define BLAS_MAXSIZE (NPY_MAX_INT64 - 1)
+#endif
 
 /*
  * Determine if a 2d matrix can be used by BLAS
@@ -40,7 +45,7 @@
  * 3. The slower (first) axis stride, in unit steps, must be larger than
  *    the faster axis dimension
  */
-static NPY_INLINE npy_bool
+static inline npy_bool
 is_blasable2d(npy_intp byte_stride1, npy_intp byte_stride2,
               npy_intp d1, npy_intp d2,  npy_intp itemsize)
 {
@@ -57,9 +62,13 @@ is_blasable2d(npy_intp byte_stride1, npy_intp byte_stride2,
     return NPY_FALSE;
 }
 
-#if defined(HAVE_CBLAS)
+#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
 static const npy_cdouble oneD = {1.0, 0.0}, zeroD = {0.0, 0.0};
-static const npy_cfloat  oneF = {1.0, 0.0}, zeroF = {0.0, 0.0};
+static const npy_cfloat oneF = {1.0f, 0.0f}, zeroF = {0.0f, 0.0f};
+#else
+static const npy_cdouble oneD = 1.0, zeroD = 0.0;
+static const npy_cfloat oneF = 1.0f, zeroF = 0.0f;
+#endif
 
 /**begin repeat
  *
@@ -84,25 +93,25 @@ NPY_NO_EXPORT void
      * op:  data in c order, m shape
      */
     enum CBLAS_ORDER order;
-    int M, N, lda;
+    CBLAS_INT M, N, lda;
 
     assert(m <= BLAS_MAXSIZE && n <= BLAS_MAXSIZE);
     assert (is_blasable2d(is2_n, sizeof(@typ@), n, 1, sizeof(@typ@)));
-    M = (int)m;
-    N = (int)n;
+    M = (CBLAS_INT)m;
+    N = (CBLAS_INT)n;
 
     if (is_blasable2d(is1_m, is1_n, m, n, sizeof(@typ@))) {
         order = CblasColMajor;
-        lda = (int)(is1_m / sizeof(@typ@));
+        lda = (CBLAS_INT)(is1_m / sizeof(@typ@));
     }
     else {
         /* If not ColMajor, caller should have ensured we are RowMajor */
         /* will not assert in release mode */
         order = CblasRowMajor;
         assert(is_blasable2d(is1_n, is1_m, n, m, sizeof(@typ@)));
-        lda = (int)(is1_n / sizeof(@typ@));
+        lda = (CBLAS_INT)(is1_n / sizeof(@typ@));
     }
-    cblas_@prefix@gemv(order, CblasTrans, N, M, @step1@, ip1, lda, ip2,
+    CBLAS_FUNC(cblas_@prefix@gemv)(order, CblasTrans, N, M, @step1@, ip1, lda, ip2,
                                      is2_n / sizeof(@typ@), @step0@, op, op_m / sizeof(@typ@));
 }
 
@@ -117,37 +126,37 @@ NPY_NO_EXPORT void
      */
     enum CBLAS_ORDER order = CblasRowMajor;
     enum CBLAS_TRANSPOSE trans1, trans2;
-    int M, N, P, lda, ldb, ldc;
+    CBLAS_INT M, N, P, lda, ldb, ldc;
     assert(m <= BLAS_MAXSIZE && n <= BLAS_MAXSIZE && p <= BLAS_MAXSIZE);
-    M = (int)m;
-    N = (int)n;
-    P = (int)p;
+    M = (CBLAS_INT)m;
+    N = (CBLAS_INT)n;
+    P = (CBLAS_INT)p;
 
     assert(is_blasable2d(os_m, os_p, m, p, sizeof(@typ@)));
-    ldc = (int)(os_m / sizeof(@typ@));
+    ldc = (CBLAS_INT)(os_m / sizeof(@typ@));
 
     if (is_blasable2d(is1_m, is1_n, m, n, sizeof(@typ@))) {
         trans1 = CblasNoTrans;
-        lda = (int)(is1_m / sizeof(@typ@));
+        lda = (CBLAS_INT)(is1_m / sizeof(@typ@));
     }
     else {
         /* If not ColMajor, caller should have ensured we are RowMajor */
         /* will not assert in release mode */
         assert(is_blasable2d(is1_n, is1_m, n, m, sizeof(@typ@)));
         trans1 = CblasTrans;
-        lda = (int)(is1_n / sizeof(@typ@));
+        lda = (CBLAS_INT)(is1_n / sizeof(@typ@));
     }
 
     if (is_blasable2d(is2_n, is2_p, n, p, sizeof(@typ@))) {
         trans2 = CblasNoTrans;
-        ldb = (int)(is2_n / sizeof(@typ@));
+        ldb = (CBLAS_INT)(is2_n / sizeof(@typ@));
     }
     else {
         /* If not ColMajor, caller should have ensured we are RowMajor */
         /* will not assert in release mode */
         assert(is_blasable2d(is2_p, is2_n, p, n, sizeof(@typ@)));
         trans2 = CblasTrans;
-        ldb = (int)(is2_p / sizeof(@typ@));
+        ldb = (CBLAS_INT)(is2_p / sizeof(@typ@));
     }
     /*
      * Use syrk if we have a case of a matrix times its transpose.
@@ -162,12 +171,14 @@ NPY_NO_EXPORT void
     ) {
         npy_intp i,j;
         if (trans1 == CblasNoTrans) {
-            cblas_@prefix@syrk(order, CblasUpper, trans1, P, N, @step1@,
-                               ip1, lda, @step0@, op, ldc);
+            CBLAS_FUNC(cblas_@prefix@syrk)(
+                order, CblasUpper, trans1, P, N, @step1@,
+                ip1, lda, @step0@, op, ldc);
         }
         else {
-            cblas_@prefix@syrk(order, CblasUpper, trans1, P, N, @step1@,
-                               ip1, ldb, @step0@, op, ldc);
+            CBLAS_FUNC(cblas_@prefix@syrk)(
+                order, CblasUpper, trans1, P, N, @step1@,
+                ip1, ldb, @step0@, op, ldc);
         }
         /* Copy the triangle */
         for (i = 0; i < P; i++) {
@@ -178,8 +189,9 @@ NPY_NO_EXPORT void
 
     }
     else {
-        cblas_@prefix@gemm(order, trans1, trans2, M, P, N, @step1@, ip1, lda,
-                           ip2, ldb, @step0@, op, ldc);
+        CBLAS_FUNC(cblas_@prefix@gemm)(
+            order, trans1, trans2, M, P, N, @step1@, ip1, lda,
+            ip2, ldb, @step0@, op, ldc);
     }
 }
 
@@ -196,16 +208,15 @@ NPY_NO_EXPORT void
  *          FLOAT, DOUBLE, HALF,
  *          CFLOAT, CDOUBLE, CLONGDOUBLE,
  *          UBYTE, USHORT, UINT, ULONG, ULONGLONG,
- *          BYTE, SHORT, INT, LONG, LONGLONG,
- *          BOOL#
+ *          BYTE, SHORT, INT, LONG, LONGLONG#
  *  #typ = npy_longdouble,
  *         npy_float,npy_double,npy_half,
  *         npy_cfloat, npy_cdouble, npy_clongdouble,
  *         npy_ubyte, npy_ushort, npy_uint, npy_ulong, npy_ulonglong,
- *         npy_byte, npy_short, npy_int, npy_long, npy_longlong,
- *         npy_bool#
- * #IS_COMPLEX = 0, 0, 0, 0, 1, 1, 1, 0*11#
- * #IS_HALF = 0, 0, 0, 1, 0*14#
+ *         npy_byte, npy_short, npy_int, npy_long, npy_longlong#
+ * #suff = , , , , f, , l, x*10#
+ * #IS_COMPLEX = 0, 0, 0, 0, 1, 1, 1, 0*10#
+ * #IS_HALF = 0, 0, 0, 1, 0*13#
  */
 
 NPY_NO_EXPORT void
@@ -227,8 +238,8 @@ NPY_NO_EXPORT void
     for (m = 0; m < dm; m++) {
         for (p = 0; p < dp; p++) {
 #if @IS_COMPLEX@ == 1
-            (*(@typ@ *)op).real = 0;
-            (*(@typ@ *)op).imag = 0;
+            npy_csetreal@suff@((@typ@ *)op, 0.0);
+            npy_csetimag@suff@((@typ@ *)op, 0.0);
 #elif @IS_HALF@
             float sum = 0;
 #else
@@ -240,10 +251,10 @@ NPY_NO_EXPORT void
 #if @IS_HALF@
                 sum += npy_half_to_float(val1) * npy_half_to_float(val2);
 #elif @IS_COMPLEX@ == 1
-                (*(@typ@ *)op).real += (val1.real * val2.real) -
-                                       (val1.imag * val2.imag);
-                (*(@typ@ *)op).imag += (val1.real * val2.imag) +
-                                       (val1.imag * val2.real);
+                npy_csetreal@suff@((@typ@ *) op, npy_creal@suff@(*((@typ@ *) op)) + ((npy_creal@suff@(val1) * npy_creal@suff@(val2)) -
+                                       (npy_cimag@suff@(val1) * npy_cimag@suff@(val2))));
+                npy_csetimag@suff@((@typ@ *) op, npy_cimag@suff@(*((@typ@ *) op)) + ((npy_creal@suff@(val1) * npy_cimag@suff@(val2)) +
+                                       (npy_cimag@suff@(val1) * npy_creal@suff@(val2))));
 #else
                 *(@typ@ *)op += val1 * val2;
 #endif
@@ -266,7 +277,44 @@ NPY_NO_EXPORT void
 }
 
 /**end repeat**/
+NPY_NO_EXPORT void
+BOOL_matmul_inner_noblas(void *_ip1, npy_intp is1_m, npy_intp is1_n,
+                           void *_ip2, npy_intp is2_n, npy_intp is2_p,
+                           void *_op, npy_intp os_m, npy_intp os_p,
+                           npy_intp dm, npy_intp dn, npy_intp dp)
+                           
+{
+    npy_intp m, n, p;
+    npy_intp ib2_p, ob_p;
+    char *ip1 = (char *)_ip1, *ip2 = (char *)_ip2, *op = (char *)_op;
 
+    ib2_p = is2_p * dp;
+    ob_p  = os_p * dp;
+
+    for (m = 0; m < dm; m++) {
+        for (p = 0; p < dp; p++) {
+            char *ip1tmp = ip1;
+            char *ip2tmp = ip2;
+            *(npy_bool *)op = NPY_FALSE;
+            for (n = 0; n < dn; n++) {
+                npy_bool val1 = (*(npy_bool *)ip1tmp);
+                npy_bool val2 = (*(npy_bool *)ip2tmp);
+                if (val1 != 0 && val2 != 0) {
+                    *(npy_bool *)op = NPY_TRUE;
+                    break;
+                }
+                ip2tmp += is2_n;
+                ip1tmp += is1_n;
+            }
+            op  +=  os_p;
+            ip2 += is2_p;
+        }
+        op -= ob_p;
+        ip2 -= ib2_p;
+        ip1 += is1_m;
+        op  +=  os_m;
+    }
+}
 
 NPY_NO_EXPORT void
 OBJECT_matmul_inner_noblas(void *_ip1, npy_intp is1_m, npy_intp is1_n,
@@ -353,7 +401,7 @@ OBJECT_matmul_inner_noblas(void *_ip1, npy_intp is1_m, npy_intp is1_n,
 
 
 NPY_NO_EXPORT void
-@TYPE@_matmul(char **args, npy_intp *dimensions, npy_intp *steps, void *NPY_UNUSED(func))
+@TYPE@_matmul(char **args, npy_intp const *dimensions, npy_intp const *steps, void *NPY_UNUSED(func))
 {
     npy_intp dOuter = *dimensions++;
     npy_intp iOuter;

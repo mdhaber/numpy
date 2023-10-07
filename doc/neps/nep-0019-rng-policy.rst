@@ -1,13 +1,15 @@
+.. _NEP19:
+
 =======================================
-NEP 19 — Random Number Generator Policy
+NEP 19 — Random number generator policy
 =======================================
 
 :Author: Robert Kern <robert.kern@gmail.com>
-:Status: Accepted
+:Status: Final
 :Type: Standards Track
 :Created: 2018-05-24
 :Updated: 2019-05-21
-:Resolution: https://mail.python.org/pipermail/numpy-discussion/2018-June/078126.html
+:Resolution: https://mail.python.org/pipermail/numpy-discussion/2018-July/078380.html
 
 Abstract
 --------
@@ -15,7 +17,7 @@ Abstract
 For the past decade, NumPy has had a strict backwards compatibility policy for
 the number stream of all of its random number distributions.  Unlike other
 numerical components in ``numpy``, which are usually allowed to return
-different when results when they are modified if they remain correct, we have
+different results when modified if the results remain correct, we have
 obligated the random number distributions to always produce the exact same
 numbers in every version.  The objective of our stream-compatibility guarantee
 was to provide exact reproducibility for simulations across numpy versions in

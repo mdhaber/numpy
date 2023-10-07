@@ -1,3 +1,5 @@
+.. _NEP22:
+
 ===========================================================
 NEP 22 — Duck typing for NumPy arrays – high level overview
 ===========================================================
@@ -23,7 +25,7 @@ Detailed description
 --------------------
 
 Traditionally, NumPy’s ``ndarray`` objects have provided two things: a
-high level API for expression operations on homogenously-typed,
+high level API for expression operations on homogeneously-typed,
 arbitrary-dimensional, array-structured data, and a concrete
 implementation of the API based on strided in-RAM storage. The API is
 powerful, fairly general, and used ubiquitously across the scientific
@@ -35,7 +37,7 @@ inappropriate, and users find they need sparse arrays, lazily
 evaluated arrays (as in dask), compressed arrays (as in blosc), arrays
 stored in GPU memory, arrays stored in alternative formats such as
 Arrow, and so forth – yet users still want to work with these arrays
-using the familiar NumPy APIs, and re-use existing code with minimal
+using the familiar NumPy APIs, and reuse existing code with minimal
 (ideally zero) porting overhead. As a working shorthand, we call these
 “duck arrays”, by analogy with Python’s “duck typing”: a “duck array”
 is a Python object which “quacks like” a numpy array in the sense that
@@ -95,7 +97,7 @@ partial duck arrays. We've been guilty of this ourself.
 
 At this point though, we think the best general strategy is to focus
 our efforts primarily on supporting full duck arrays, and only worry
-about partial duck arrays as much as we need to to make sure we don't
+about partial duck arrays as much as we need to make sure we don't
 accidentally rule them out for no reason.
 
 Why focus on full duck arrays? Several reasons:
@@ -339,7 +341,7 @@ to support (at least) these features:
   example, because they use some kinds of sparse or compressed
   storage, or are in read-only shared memory), and it turns out that
   frequently-used code like the default implementation of ``np.mean``
-  needs to check this (to decide whether it can re-use temporary
+  needs to check this (to decide whether it can reuse temporary
   arrays).
 
 We intentionally do not describe exactly how to add support for these

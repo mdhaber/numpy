@@ -1,5 +1,5 @@
-#ifndef __BINOP_OVERRIDE_H
-#define __BINOP_OVERRIDE_H
+#ifndef NUMPY_CORE_SRC_COMMON_BINOP_OVERRIDE_H_
+#define NUMPY_CORE_SRC_COMMON_BINOP_OVERRIDE_H_
 
 #include <string.h>
 #include <Python.h>
@@ -128,11 +128,14 @@ binop_should_defer(PyObject *self, PyObject *other, int inplace)
      * Classes with __array_ufunc__ are living in the future, and only need to
      * check whether __array_ufunc__ equals None.
      */
-    attr = PyArray_LookupSpecial(other, "__array_ufunc__");
-    if (attr) {
+    attr = PyArray_LookupSpecial(other, npy_um_str_array_ufunc);
+    if (attr != NULL) {
         defer = !inplace && (attr == Py_None);
         Py_DECREF(attr);
         return defer;
+    }
+    else if (PyErr_Occurred()) {
+        PyErr_Clear(); /* TODO[gh-14801]: propagate crashes during attribute access? */
     }
     /*
      * Otherwise, we need to check for the legacy __array_priority__. But if
@@ -209,4 +212,4 @@ binop_should_defer(PyObject *self, PyObject *other, int inplace)
         }                                                               \
     } while (0)
 
-#endif
+#endif  /* NUMPY_CORE_SRC_COMMON_BINOP_OVERRIDE_H_ */

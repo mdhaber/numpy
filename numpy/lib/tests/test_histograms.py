@@ -1,21 +1,21 @@
-from __future__ import division, absolute_import, print_function
-
 import numpy as np
 
-from numpy.lib.histograms import histogram, histogramdd, histogram_bin_edges
+from numpy import histogram, histogramdd, histogram_bin_edges
 from numpy.testing import (
     assert_, assert_equal, assert_array_equal, assert_almost_equal,
     assert_array_almost_equal, assert_raises, assert_allclose,
     assert_array_max_ulp, assert_raises_regex, suppress_warnings,
     )
+from numpy.testing._private.utils import requires_memory
+import pytest
 
 
-class TestHistogram(object):
+class TestHistogram:
 
-    def setup(self):
+    def setup_method(self):
         pass
 
-    def teardown(self):
+    def teardown_method(self):
         pass
 
     def test_simple(self):
@@ -39,30 +39,6 @@ class TestHistogram(object):
         assert_equal(h, np.array([2]))
         assert_allclose(e, np.array([1., 2.]))
 
-    def test_normed(self):
-        sup = suppress_warnings()
-        with sup:
-            rec = sup.record(np.VisibleDeprecationWarning, '.*normed.*')
-            # Check that the integral of the density equals 1.
-            n = 100
-            v = np.random.rand(n)
-            a, b = histogram(v, normed=True)
-            area = np.sum(a * np.diff(b))
-            assert_almost_equal(area, 1)
-            assert_equal(len(rec), 1)
-
-        sup = suppress_warnings()
-        with sup:
-            rec = sup.record(np.VisibleDeprecationWarning, '.*normed.*')
-            # Check with non-constant bin widths (buggy but backwards
-            # compatible)
-            v = np.arange(10)
-            bins = [0, 1, 5, 9, 10]
-            a, b = histogram(v, bins, normed=True)
-            area = np.sum(a * np.diff(b))
-            assert_almost_equal(area, 1)
-            assert_equal(len(rec), 1)
-
     def test_density(self):
         # Check that the integral of the density equals 1.
         n = 100
@@ -82,7 +58,7 @@ class TestHistogram(object):
         a, b = histogram(v, bins, density=False)
         assert_array_equal(a, [1, 2, 3, 4])
 
-        # Variale bin widths are especially useful to deal with
+        # Variable bin widths are especially useful to deal with
         # infinities.
         v = np.arange(10)
         bins = [0, 1, 3, 6, np.inf]
@@ -422,8 +398,25 @@ class TestHistogram(object):
         edges = histogram_bin_edges(arr, bins='auto', range=(0, 1))
         assert_array_equal(edges, e)
 
+    @requires_memory(free_bytes=1e10)
+    @pytest.mark.slow
+    def test_big_arrays(self):
+        sample = np.zeros([100000000, 3])
+        xbins = 400
+        ybins = 400
+        zbins = np.arange(16000)
+        hist = np.histogramdd(sample=sample, bins=(xbins, ybins, zbins))
+        assert_equal(type(hist), type((1, 2)))
 
-class TestHistogramOptimBinNums(object):
+    def test_gh_23110(self):
+        hist, e = np.histogram(np.array([-0.9e-308], dtype='>f8'),
+                               bins=2,
+                               range=(-1e-308, -2e-313))
+        expected_hist = np.array([1, 0])
+        assert_array_equal(hist, expected_hist)
+
+
+class TestHistogramOptimBinNums:
     """
     Provide test coverage when using provided estimators for optimal number of
     bins
@@ -591,6 +584,16 @@ class TestHistogramOptimBinNums(object):
                 msg += " with datasize of {0}".format(testlen)
                 assert_equal(len(a), numbins, err_msg=msg)
 
+    @pytest.mark.parametrize("bins", ['auto', 'fd', 'doane', 'scott',
+                                      'stone', 'rice', 'sturges'])
+    def test_signed_integer_data(self, bins):
+        # Regression test for gh-14379.
+        a = np.array([-2, 0, 127], dtype=np.int8)
+        hist, edges = np.histogram(a, bins=bins)
+        hist32, edges32 = np.histogram(a.astype(np.int32), bins=bins)
+        assert_array_equal(hist, hist32)
+        assert_array_equal(edges, edges32)
+
     def test_simple_weighted(self):
         """
         Check that weighted data raises a TypeError
@@ -601,7 +604,7 @@ class TestHistogramOptimBinNums(object):
                           estimator, weights=[1, 2, 3])
 
 
-class TestHistogramdd(object):
+class TestHistogramdd:
 
     def test_simple(self):
         x = np.array([[-.5, .5, 1.5], [-.5, 1.5, 2.5], [-.5, 2.5, .5],
@@ -810,20 +813,3 @@ class TestHistogramdd(object):
         hist_dd, edges_dd = histogramdd((v,), (bins,), density=True)
         assert_equal(hist, hist_dd)
         assert_equal(edges, edges_dd[0])
-
-    def test_density_via_normed(self):
-        # normed should simply alias to density argument
-        v = np.arange(10)
-        bins = np.array([0, 1, 3, 6, 10])
-        hist, edges = histogram(v, bins, density=True)
-        hist_dd, edges_dd = histogramdd((v,), (bins,), normed=True)
-        assert_equal(hist, hist_dd)
-        assert_equal(edges, edges_dd[0])
-
-    def test_density_normed_redundancy(self):
-        v = np.arange(10)
-        bins = np.array([0, 1, 3, 6, 10])
-        with assert_raises_regex(TypeError, "Cannot specify both"):
-            hist_dd, edges_dd = histogramdd((v,), (bins,),
-                                            density=True,
-                                            normed=True)

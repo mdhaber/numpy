@@ -7,17 +7,13 @@ an array object, and when iterated it will return sub-arrays with at most
 a user-specified number of elements.
 
 """
-from __future__ import division, absolute_import, print_function
-
 from operator import mul
 from functools import reduce
-
-from numpy.compat import long
 
 __all__ = ['Arrayterator']
 
 
-class Arrayterator(object):
+class Arrayterator:
     """
     Buffered iterator for big arrays.
 
@@ -52,9 +48,10 @@ class Arrayterator(object):
 
     See Also
     --------
-    ndenumerate : Multidimensional array iterator.
-    flatiter : Flat array iterator.
-    memmap : Create a memory-map to an array stored in a binary file on disk.
+    numpy.ndenumerate : Multidimensional array iterator.
+    numpy.flatiter : Flat array iterator.
+    numpy.memmap : Create a memory-map to an array stored
+                   in a binary file on disk.
 
     Notes
     -----
@@ -110,7 +107,7 @@ class Arrayterator(object):
             if slice_ is Ellipsis:
                 fixed.extend([slice(None)] * (dims-length+1))
                 length = len(fixed)
-            elif isinstance(slice_, (int, long)):
+            elif isinstance(slice_, int):
                 fixed.append(slice(slice_, slice_+1, 1))
             else:
                 fixed.append(slice_)
@@ -143,11 +140,12 @@ class Arrayterator(object):
         A 1-D flat iterator for Arrayterator objects.
 
         This iterator returns elements of the array to be iterated over in
-        `Arrayterator` one by one. It is similar to `flatiter`.
+        `~lib.Arrayterator` one by one. 
+        It is similar to `flatiter`.
 
         See Also
         --------
-        Arrayterator
+        lib.Arrayterator
         flatiter
 
         Examples
@@ -163,8 +161,7 @@ class Arrayterator(object):
 
         """
         for block in self:
-            for value in block.flat:
-                yield value
+            yield from block.flat
 
     @property
     def shape(self):

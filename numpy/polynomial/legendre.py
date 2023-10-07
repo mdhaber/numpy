@@ -1,8 +1,7 @@
 """
-Legendre Series (:mod: `numpy.polynomial.legendre`)
-===================================================
-
-.. currentmodule:: numpy.polynomial.polynomial
+==================================================
+Legendre Series (:mod:`numpy.polynomial.legendre`)
+==================================================
 
 This module provides a number of objects (mostly functions) useful for
 dealing with Legendre series, including a `Legendre` class that
@@ -10,16 +9,23 @@ encapsulates the usual arithmetic operations.  (General information
 on how this module represents and works with such polynomials is in the
 docstring for its "parent" sub-package, `numpy.polynomial`).
 
+Classes
+-------
+.. autosummary::
+   :toctree: generated/
+
+    Legendre
+
 Constants
 ---------
 
 .. autosummary::
    :toctree: generated/
 
-   legdomain            Legendre series default domain, [-1,1].
-   legzero              Legendre series that evaluates identically to 0.
-   legone               Legendre series that evaluates identically to 1.
-   legx                 Legendre series for the identity map, ``f(x) = x``.
+   legdomain
+   legzero
+   legone
+   legx
 
 Arithmetic
 ----------
@@ -27,17 +33,17 @@ Arithmetic
 .. autosummary::
    :toctree: generated/
 
-   legadd               add two Legendre series.
-   legsub               subtract one Legendre series from another.
-   legmulx              multiply a Legendre series in ``P_i(x)`` by ``x``.
-   legmul               multiply two Legendre series.
-   legdiv               divide one Legendre series by another.
-   legpow               raise a Legendre series to a positive integer power.
-   legval               evaluate a Legendre series at given points.
-   legval2d             evaluate a 2D Legendre series at given points.
-   legval3d             evaluate a 3D Legendre series at given points.
-   leggrid2d            evaluate a 2D Legendre series on a Cartesian product.
-   leggrid3d            evaluate a 3D Legendre series on a Cartesian product.
+   legadd
+   legsub
+   legmulx
+   legmul
+   legdiv
+   legpow
+   legval
+   legval2d
+   legval3d
+   leggrid2d
+   leggrid3d
 
 Calculus
 --------
@@ -45,8 +51,8 @@ Calculus
 .. autosummary::
    :toctree: generated/
 
-   legder               differentiate a Legendre series.
-   legint               integrate a Legendre series.
+   legder
+   legint
 
 Misc Functions
 --------------
@@ -54,36 +60,25 @@ Misc Functions
 .. autosummary::
    :toctree: generated/
 
-   legfromroots          create a Legendre series with specified roots.
-   legroots              find the roots of a Legendre series.
-   legvander             Vandermonde-like matrix for Legendre polynomials.
-   legvander2d           Vandermonde-like matrix for 2D power series.
-   legvander3d           Vandermonde-like matrix for 3D power series.
-   leggauss              Gauss-Legendre quadrature, points and weights.
-   legweight             Legendre weight function.
-   legcompanion          symmetrized companion matrix in Legendre form.
-   legfit                least-squares fit returning a Legendre series.
-   legtrim               trim leading coefficients from a Legendre series.
-   legline               Legendre series representing given straight line.
-   leg2poly              convert a Legendre series to a polynomial.
-   poly2leg              convert a polynomial to a Legendre series.
-
-Classes
--------
-    Legendre            A Legendre series class.
+   legfromroots
+   legroots
+   legvander
+   legvander2d
+   legvander3d
+   leggauss
+   legweight
+   legcompanion
+   legfit
+   legtrim
+   legline
+   leg2poly
+   poly2leg
 
 See also
 --------
-numpy.polynomial.polynomial
-numpy.polynomial.chebyshev
-numpy.polynomial.laguerre
-numpy.polynomial.hermite
-numpy.polynomial.hermite_e
+numpy.polynomial
 
 """
-from __future__ import division, absolute_import, print_function
-
-import warnings
 import numpy as np
 import numpy.linalg as la
 from numpy.core.multiarray import normalize_axis_index
@@ -190,7 +185,7 @@ def leg2poly(c):
     >>> p = c.convert(kind=P.Polynomial)
     >>> p
     Polynomial([-1. , -3.5,  3. ,  7.5], domain=[-1.,  1.], window=[-1.,  1.])
-    >>> P.leg2poly(range(4))
+    >>> P.legendre.leg2poly(range(4))
     array([-1. , -3.5,  3. ,  7.5])
 
 
@@ -248,7 +243,11 @@ def legline(off, scl):
 
     See Also
     --------
-    polyline, chebline
+    numpy.polynomial.polynomial.polyline
+    numpy.polynomial.chebyshev.chebline
+    numpy.polynomial.laguerre.lagline
+    numpy.polynomial.hermite.hermline
+    numpy.polynomial.hermite_e.hermeline
 
     Examples
     --------
@@ -273,7 +272,7 @@ def legfromroots(roots):
 
     .. math:: p(x) = (x - r_0) * (x - r_1) * ... * (x - r_n),
 
-    in Legendre form, where the `r_n` are the roots specified in `roots`.
+    in Legendre form, where the :math:`r_n` are the roots specified in `roots`.
     If a zero has multiplicity n, then it must appear in `roots` n times.
     For instance, if 2 is a root of multiplicity three and 3 is a root of
     multiplicity 2, then `roots` looks something like [2, 2, 2, 3, 3]. The
@@ -301,7 +300,11 @@ def legfromroots(roots):
 
     See Also
     --------
-    polyfromroots, chebfromroots, lagfromroots, hermfromroots, hermefromroots
+    numpy.polynomial.polynomial.polyfromroots
+    numpy.polynomial.chebyshev.chebfromroots
+    numpy.polynomial.laguerre.lagfromroots
+    numpy.polynomial.hermite.hermfromroots
+    numpy.polynomial.hermite_e.hermefromroots
 
     Examples
     --------
@@ -422,7 +425,7 @@ def legmulx(c):
 
     See Also
     --------
-    legadd, legmul, legmul, legdiv, legpow
+    legadd, legmul, legdiv, legpow
 
     Notes
     -----
@@ -602,9 +605,6 @@ def legpow(c, pow, maxpower=16):
     --------
     legadd, legsub, legmulx, legmul, legdiv
 
-    Examples
-    --------
-
     """
     return pu._pow(legmul, c, pow, maxpower)
 
@@ -672,8 +672,8 @@ def legder(c, m=1, scl=1, axis=0):
     c = np.array(c, ndmin=1, copy=True)
     if c.dtype.char in '?bBhHiIlLqQpP':
         c = c.astype(np.double)
-    cnt = pu._deprecate_as_int(m, "the order of derivation")
-    iaxis = pu._deprecate_as_int(axis, "the axis")
+    cnt = pu._as_int(m, "the order of derivation")
+    iaxis = pu._as_int(axis, "the axis")
     if cnt < 0:
         raise ValueError("The order of derivation must be non-negative")
     iaxis = normalize_axis_index(iaxis, c.ndim)
@@ -791,8 +791,8 @@ def legint(c, m=1, k=[], lbnd=0, scl=1, axis=0):
         c = c.astype(np.double)
     if not np.iterable(k):
         k = [k]
-    cnt = pu._deprecate_as_int(m, "the order of integration")
-    iaxis = pu._deprecate_as_int(axis, "the axis")
+    cnt = pu._as_int(m, "the order of integration")
+    iaxis = pu._as_int(axis, "the axis")
     if cnt < 0:
         raise ValueError("The order of integration must be non-negative")
     if len(k) > cnt:
@@ -857,7 +857,7 @@ def legval(x, c, tensor=True):
         If `x` is a list or tuple, it is converted to an ndarray, otherwise
         it is left unchanged and treated as a scalar. In either case, `x`
         or its elements must support addition and multiplication with
-        with themselves and with the elements of `c`.
+        themselves and with the elements of `c`.
     c : array_like
         Array of coefficients ordered so that the coefficients for terms of
         degree n are contained in c[n]. If `c` is multidimensional the
@@ -886,9 +886,6 @@ def legval(x, c, tensor=True):
     Notes
     -----
     The evaluation uses Clenshaw recursion, aka synthetic division.
-
-    Examples
-    --------
 
     """
     c = np.array(c, ndmin=1, copy=False)
@@ -1097,7 +1094,7 @@ def leggrid3d(x, y, z, c):
     ----------
     x, y, z : array_like, compatible objects
         The three dimensional series is evaluated at the points in the
-        Cartesian product of `x`, `y`, and `z`.  If `x`,`y`, or `z` is a
+        Cartesian product of `x`, `y`, and `z`.  If `x`, `y`, or `z` is a
         list or tuple, it is first converted to an ndarray, otherwise it is
         left unchanged and, if it isn't an ndarray, it is treated as a
         scalar.
@@ -1161,7 +1158,7 @@ def legvander(x, deg):
         the converted `x`.
 
     """
-    ideg = pu._deprecate_as_int(deg, "deg")
+    ideg = pu._as_int(deg, "deg")
     if ideg < 0:
         raise ValueError("deg must be non-negative")
 
@@ -1216,7 +1213,7 @@ def legvander2d(x, y, deg):
     -------
     vander2d : ndarray
         The shape of the returned matrix is ``x.shape + (order,)``, where
-        :math:`order = (deg[0]+1)*(deg([1]+1)`.  The dtype will be the same
+        :math:`order = (deg[0]+1)*(deg[1]+1)`.  The dtype will be the same
         as the converted `x` and `y`.
 
     See Also
@@ -1229,7 +1226,7 @@ def legvander2d(x, y, deg):
     .. versionadded:: 1.7.0
 
     """
-    return pu._vander2d(legvander, x, y, deg)
+    return pu._vander_nd_flat((legvander, legvander), (x, y), deg)
 
 
 def legvander3d(x, y, z, deg):
@@ -1270,7 +1267,7 @@ def legvander3d(x, y, z, deg):
     -------
     vander3d : ndarray
         The shape of the returned matrix is ``x.shape + (order,)``, where
-        :math:`order = (deg[0]+1)*(deg([1]+1)*(deg[2]+1)`.  The dtype will
+        :math:`order = (deg[0]+1)*(deg[1]+1)*(deg[2]+1)`.  The dtype will
         be the same as the converted `x`, `y`, and `z`.
 
     See Also
@@ -1283,7 +1280,7 @@ def legvander3d(x, y, z, deg):
     .. versionadded:: 1.7.0
 
     """
-    return pu._vander3d(legvander, x, y, z, deg)
+    return pu._vander_nd_flat((legvander, legvander, legvander), (x, y, z), deg)
 
 
 def legfit(x, y, deg, rcond=None, full=False, w=None):
@@ -1324,10 +1321,11 @@ def legfit(x, y, deg, rcond=None, full=False, w=None):
         default) just the coefficients are returned, when True diagnostic
         information from the singular value decomposition is also returned.
     w : array_like, shape (`M`,), optional
-        Weights. If not None, the contribution of each point
-        ``(x[i],y[i])`` to the fit is weighted by `w[i]`. Ideally the
-        weights are chosen so that the errors of the products ``w[i]*y[i]``
-        all have the same variance.  The default value is None.
+        Weights. If not None, the weight ``w[i]`` applies to the unsquared
+        residual ``y[i] - y_hat[i]`` at ``x[i]``. Ideally the weights are
+        chosen so that the errors of the products ``w[i]*y[i]`` all have the
+        same variance.  When using inverse-variance weighting, use
+        ``w[i] = 1/sigma(y[i])``.  The default value is None.
 
         .. versionadded:: 1.5.0
 
@@ -1341,32 +1339,36 @@ def legfit(x, y, deg, rcond=None, full=False, w=None):
         returned `coef`.
 
     [residuals, rank, singular_values, rcond] : list
-        These values are only returned if `full` = True
+        These values are only returned if ``full == True``
 
-        resid -- sum of squared residuals of the least squares fit
-        rank -- the numerical rank of the scaled Vandermonde matrix
-        sv -- singular values of the scaled Vandermonde matrix
-        rcond -- value of `rcond`.
+        - residuals -- sum of squared residuals of the least squares fit
+        - rank -- the numerical rank of the scaled Vandermonde matrix
+        - singular_values -- singular values of the scaled Vandermonde matrix
+        - rcond -- value of `rcond`.
 
-        For more details, see `linalg.lstsq`.
+        For more details, see `numpy.linalg.lstsq`.
 
     Warns
     -----
     RankWarning
         The rank of the coefficient matrix in the least-squares fit is
-        deficient. The warning is only raised if `full` = False.  The
+        deficient. The warning is only raised if ``full == False``.  The
         warnings can be turned off by
 
         >>> import warnings
-        >>> warnings.simplefilter('ignore', np.RankWarning)
+        >>> warnings.simplefilter('ignore', np.exceptions.RankWarning)
 
     See Also
     --------
-    chebfit, polyfit, lagfit, hermfit, hermefit
+    numpy.polynomial.polynomial.polyfit
+    numpy.polynomial.chebyshev.chebfit
+    numpy.polynomial.laguerre.lagfit
+    numpy.polynomial.hermite.hermfit
+    numpy.polynomial.hermite_e.hermefit
     legval : Evaluates a Legendre series.
     legvander : Vandermonde matrix of Legendre series.
     legweight : Legendre weight function (= 1).
-    linalg.lstsq : Computes a least-squares fit from the matrix.
+    numpy.linalg.lstsq : Computes a least-squares fit from the matrix.
     scipy.interpolate.UnivariateSpline : Computes spline fits.
 
     Notes
@@ -1475,7 +1477,11 @@ def legroots(c):
 
     See Also
     --------
-    polyroots, chebroots, lagroots, hermroots, hermeroots
+    numpy.polynomial.polynomial.polyroots
+    numpy.polynomial.chebyshev.chebroots
+    numpy.polynomial.laguerre.lagroots
+    numpy.polynomial.hermite.hermroots
+    numpy.polynomial.hermite_e.hermeroots
 
     Notes
     -----
@@ -1547,7 +1553,7 @@ def leggauss(deg):
     the right value when integrating 1.
 
     """
-    ideg = pu._deprecate_as_int(deg, "deg")
+    ideg = pu._as_int(deg, "deg")
     if ideg <= 0:
         raise ValueError("deg must be a positive integer")
 
@@ -1615,7 +1621,7 @@ class Legendre(ABCPolyBase):
 
     The Legendre class provides the standard Python numerical methods
     '+', '-', '*', '//', '%', 'divmod', '**', and '()' as well as the
-    attributes and methods listed in the `ABCPolyBase` documentation.
+    attributes and methods listed below.
 
     Parameters
     ----------
@@ -1630,6 +1636,12 @@ class Legendre(ABCPolyBase):
         Window, see `domain` for its use. The default value is [-1, 1].
 
         .. versionadded:: 1.6.0
+    symbol : str, optional
+        Symbol used to represent the independent variable in string
+        representations of the polynomial expression, e.g. for printing.
+        The symbol must be a valid Python identifier. Default value is 'x'.
+
+        .. versionadded:: 1.24
 
     """
     # Virtual Functions
@@ -1647,7 +1659,6 @@ class Legendre(ABCPolyBase):
     _fromroots = staticmethod(legfromroots)
 
     # Virtual properties
-    nickname = 'leg'
     domain = np.array(legdomain)
     window = np.array(legdomain)
     basis_name = 'P'

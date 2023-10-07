@@ -1,5 +1,7 @@
 """
-Objects for dealing with Hermite series.
+==============================================================
+Hermite Series, "Physicists" (:mod:`numpy.polynomial.hermite`)
+==============================================================
 
 This module provides a number of objects (mostly functions) useful for
 dealing with Hermite series, including a `Hermite` class that
@@ -7,60 +9,72 @@ encapsulates the usual arithmetic operations.  (General information
 on how this module represents and works with such polynomials is in the
 docstring for its "parent" sub-package, `numpy.polynomial`).
 
+Classes
+-------
+.. autosummary::
+   :toctree: generated/
+
+   Hermite
+
 Constants
 ---------
-- `hermdomain` -- Hermite series default domain, [-1,1].
-- `hermzero` -- Hermite series that evaluates identically to 0.
-- `hermone` -- Hermite series that evaluates identically to 1.
-- `hermx` -- Hermite series for the identity map, ``f(x) = x``.
+.. autosummary::
+   :toctree: generated/
+
+   hermdomain
+   hermzero
+   hermone
+   hermx
 
 Arithmetic
 ----------
-- `hermadd` -- add two Hermite series.
-- `hermsub` -- subtract one Hermite series from another.
-- `hermmulx` -- multiply a Hermite series in ``P_i(x)`` by ``x``.
-- `hermmul` -- multiply two Hermite series.
-- `hermdiv` -- divide one Hermite series by another.
-- `hermpow` -- raise a Hermite series to a positive integer power.
-- `hermval` -- evaluate a Hermite series at given points.
-- `hermval2d` -- evaluate a 2D Hermite series at given points.
-- `hermval3d` -- evaluate a 3D Hermite series at given points.
-- `hermgrid2d` -- evaluate a 2D Hermite series on a Cartesian product.
-- `hermgrid3d` -- evaluate a 3D Hermite series on a Cartesian product.
+.. autosummary::
+   :toctree: generated/
+
+   hermadd
+   hermsub
+   hermmulx
+   hermmul
+   hermdiv
+   hermpow
+   hermval
+   hermval2d
+   hermval3d
+   hermgrid2d
+   hermgrid3d
 
 Calculus
 --------
-- `hermder` -- differentiate a Hermite series.
-- `hermint` -- integrate a Hermite series.
+.. autosummary::
+   :toctree: generated/
+
+   hermder
+   hermint
 
 Misc Functions
 --------------
-- `hermfromroots` -- create a Hermite series with specified roots.
-- `hermroots` -- find the roots of a Hermite series.
-- `hermvander` -- Vandermonde-like matrix for Hermite polynomials.
-- `hermvander2d` -- Vandermonde-like matrix for 2D power series.
-- `hermvander3d` -- Vandermonde-like matrix for 3D power series.
-- `hermgauss` -- Gauss-Hermite quadrature, points and weights.
-- `hermweight` -- Hermite weight function.
-- `hermcompanion` -- symmetrized companion matrix in Hermite form.
-- `hermfit` -- least-squares fit returning a Hermite series.
-- `hermtrim` -- trim leading coefficients from a Hermite series.
-- `hermline` -- Hermite series of given straight line.
-- `herm2poly` -- convert a Hermite series to a polynomial.
-- `poly2herm` -- convert a polynomial to a Hermite series.
+.. autosummary::
+   :toctree: generated/
 
-Classes
--------
-- `Hermite` -- A Hermite series class.
+   hermfromroots
+   hermroots
+   hermvander
+   hermvander2d
+   hermvander3d
+   hermgauss
+   hermweight
+   hermcompanion
+   hermfit
+   hermtrim
+   hermline
+   herm2poly
+   poly2herm
 
 See also
 --------
 `numpy.polynomial`
 
 """
-from __future__ import division, absolute_import, print_function
-
-import warnings
 import numpy as np
 import numpy.linalg as la
 from numpy.core.multiarray import normalize_axis_index
@@ -219,7 +233,11 @@ def hermline(off, scl):
 
     See Also
     --------
-    polyline, chebline
+    numpy.polynomial.polynomial.polyline
+    numpy.polynomial.chebyshev.chebline
+    numpy.polynomial.legendre.legline
+    numpy.polynomial.laguerre.lagline
+    numpy.polynomial.hermite_e.hermeline
 
     Examples
     --------
@@ -244,7 +262,7 @@ def hermfromroots(roots):
 
     .. math:: p(x) = (x - r_0) * (x - r_1) * ... * (x - r_n),
 
-    in Hermite form, where the `r_n` are the roots specified in `roots`.
+    in Hermite form, where the :math:`r_n` are the roots specified in `roots`.
     If a zero has multiplicity n, then it must appear in `roots` n times.
     For instance, if 2 is a root of multiplicity three and 3 is a root of
     multiplicity 2, then `roots` looks something like [2, 2, 2, 3, 3]. The
@@ -272,7 +290,11 @@ def hermfromroots(roots):
 
     See Also
     --------
-    polyfromroots, legfromroots, lagfromroots, chebfromroots, hermefromroots
+    numpy.polynomial.polynomial.polyfromroots
+    numpy.polynomial.legendre.legfromroots
+    numpy.polynomial.laguerre.lagfromroots
+    numpy.polynomial.chebyshev.chebfromroots
+    numpy.polynomial.hermite_e.hermefromroots
 
     Examples
     --------
@@ -397,7 +419,7 @@ def hermmulx(c):
 
     .. math::
 
-    xP_i(x) = (P_{i + 1}(x)/2 + i*P_{i - 1}(x))
+        xP_i(x) = (P_{i + 1}(x)/2 + i*P_{i - 1}(x))
 
     Examples
     --------
@@ -630,8 +652,8 @@ def hermder(c, m=1, scl=1, axis=0):
     c = np.array(c, ndmin=1, copy=True)
     if c.dtype.char in '?bBhHiIlLqQpP':
         c = c.astype(np.double)
-    cnt = pu._deprecate_as_int(m, "the order of derivation")
-    iaxis = pu._deprecate_as_int(axis, "the axis")
+    cnt = pu._as_int(m, "the order of derivation")
+    iaxis = pu._as_int(axis, "the axis")
     if cnt < 0:
         raise ValueError("The order of derivation must be non-negative")
     iaxis = normalize_axis_index(iaxis, c.ndim)
@@ -743,8 +765,8 @@ def hermint(c, m=1, k=[], lbnd=0, scl=1, axis=0):
         c = c.astype(np.double)
     if not np.iterable(k):
         k = [k]
-    cnt = pu._deprecate_as_int(m, "the order of integration")
-    iaxis = pu._deprecate_as_int(axis, "the axis")
+    cnt = pu._as_int(m, "the order of integration")
+    iaxis = pu._as_int(axis, "the axis")
     if cnt < 0:
         raise ValueError("The order of integration must be non-negative")
     if len(k) > cnt:
@@ -805,7 +827,7 @@ def hermval(x, c, tensor=True):
         If `x` is a list or tuple, it is converted to an ndarray, otherwise
         it is left unchanged and treated as a scalar. In either case, `x`
         or its elements must support addition and multiplication with
-        with themselves and with the elements of `c`.
+        themselves and with the elements of `c`.
     c : array_like
         Array of coefficients ordered so that the coefficients for terms of
         degree n are contained in c[n]. If `c` is multidimensional the
@@ -1053,7 +1075,7 @@ def hermgrid3d(x, y, z, c):
     ----------
     x, y, z : array_like, compatible objects
         The three dimensional series is evaluated at the points in the
-        Cartesian product of `x`, `y`, and `z`.  If `x`,`y`, or `z` is a
+        Cartesian product of `x`, `y`, and `z`.  If `x`, `y`, or `z` is a
         list or tuple, it is first converted to an ndarray, otherwise it is
         left unchanged and, if it isn't an ndarray, it is treated as a
         scalar.
@@ -1126,7 +1148,7 @@ def hermvander(x, deg):
            [ 1.,  2.,  2., -4.]])
 
     """
-    ideg = pu._deprecate_as_int(deg, "deg")
+    ideg = pu._as_int(deg, "deg")
     if ideg < 0:
         raise ValueError("deg must be non-negative")
 
@@ -1180,7 +1202,7 @@ def hermvander2d(x, y, deg):
     -------
     vander2d : ndarray
         The shape of the returned matrix is ``x.shape + (order,)``, where
-        :math:`order = (deg[0]+1)*(deg([1]+1)`.  The dtype will be the same
+        :math:`order = (deg[0]+1)*(deg[1]+1)`.  The dtype will be the same
         as the converted `x` and `y`.
 
     See Also
@@ -1193,7 +1215,7 @@ def hermvander2d(x, y, deg):
     .. versionadded:: 1.7.0
 
     """
-    return pu._vander2d(hermvander, x, y, deg)
+    return pu._vander_nd_flat((hermvander, hermvander), (x, y), deg)
 
 
 def hermvander3d(x, y, z, deg):
@@ -1234,7 +1256,7 @@ def hermvander3d(x, y, z, deg):
     -------
     vander3d : ndarray
         The shape of the returned matrix is ``x.shape + (order,)``, where
-        :math:`order = (deg[0]+1)*(deg([1]+1)*(deg[2]+1)`.  The dtype will
+        :math:`order = (deg[0]+1)*(deg[1]+1)*(deg[2]+1)`.  The dtype will
         be the same as the converted `x`, `y`, and `z`.
 
     See Also
@@ -1247,7 +1269,7 @@ def hermvander3d(x, y, z, deg):
     .. versionadded:: 1.7.0
 
     """
-    return pu._vander3d(hermvander, x, y, z, deg)
+    return pu._vander_nd_flat((hermvander, hermvander, hermvander), (x, y, z), deg)
 
 
 def hermfit(x, y, deg, rcond=None, full=False, w=None):
@@ -1288,10 +1310,11 @@ def hermfit(x, y, deg, rcond=None, full=False, w=None):
         default) just the coefficients are returned, when True diagnostic
         information from the singular value decomposition is also returned.
     w : array_like, shape (`M`,), optional
-        Weights. If not None, the contribution of each point
-        ``(x[i],y[i])`` to the fit is weighted by `w[i]`. Ideally the
-        weights are chosen so that the errors of the products ``w[i]*y[i]``
-        all have the same variance.  The default value is None.
+        Weights. If not None, the weight ``w[i]`` applies to the unsquared
+        residual ``y[i] - y_hat[i]`` at ``x[i]``. Ideally the weights are
+        chosen so that the errors of the products ``w[i]*y[i]`` all have the
+        same variance.  When using inverse-variance weighting, use
+        ``w[i] = 1/sigma(y[i])``.  The default value is None.
 
     Returns
     -------
@@ -1301,32 +1324,36 @@ def hermfit(x, y, deg, rcond=None, full=False, w=None):
         `k`.
 
     [residuals, rank, singular_values, rcond] : list
-        These values are only returned if `full` = True
+        These values are only returned if ``full == True``
 
-        resid -- sum of squared residuals of the least squares fit
-        rank -- the numerical rank of the scaled Vandermonde matrix
-        sv -- singular values of the scaled Vandermonde matrix
-        rcond -- value of `rcond`.
+        - residuals -- sum of squared residuals of the least squares fit
+        - rank -- the numerical rank of the scaled Vandermonde matrix
+        - singular_values -- singular values of the scaled Vandermonde matrix
+        - rcond -- value of `rcond`.
 
-        For more details, see `linalg.lstsq`.
+        For more details, see `numpy.linalg.lstsq`.
 
     Warns
     -----
     RankWarning
         The rank of the coefficient matrix in the least-squares fit is
-        deficient. The warning is only raised if `full` = False.  The
+        deficient. The warning is only raised if ``full == False``.  The
         warnings can be turned off by
 
         >>> import warnings
-        >>> warnings.simplefilter('ignore', np.RankWarning)
+        >>> warnings.simplefilter('ignore', np.exceptions.RankWarning)
 
     See Also
     --------
-    chebfit, legfit, lagfit, polyfit, hermefit
+    numpy.polynomial.chebyshev.chebfit
+    numpy.polynomial.legendre.legfit
+    numpy.polynomial.laguerre.lagfit
+    numpy.polynomial.polynomial.polyfit
+    numpy.polynomial.hermite_e.hermefit
     hermval : Evaluates a Hermite series.
     hermvander : Vandermonde matrix of Hermite series.
     hermweight : Hermite weight function
-    linalg.lstsq : Computes a least-squares fit from the matrix.
+    numpy.linalg.lstsq : Computes a least-squares fit from the matrix.
     scipy.interpolate.UnivariateSpline : Computes spline fits.
 
     Notes
@@ -1355,8 +1382,8 @@ def hermfit(x, y, deg, rcond=None, full=False, w=None):
 
     Fits using Hermite series are probably most useful when the data can be
     approximated by ``sqrt(w(x)) * p(x)``, where `w(x)` is the Hermite
-    weight. In that case the weight ``sqrt(w(x[i])`` should be used
-    together with data values ``y[i]/sqrt(w(x[i])``. The weight function is
+    weight. In that case the weight ``sqrt(w(x[i]))`` should be used
+    together with data values ``y[i]/sqrt(w(x[i]))``. The weight function is
     available as `hermweight`.
 
     References
@@ -1443,7 +1470,11 @@ def hermroots(c):
 
     See Also
     --------
-    polyroots, legroots, lagroots, chebroots, hermeroots
+    numpy.polynomial.polynomial.polyroots
+    numpy.polynomial.legendre.legroots
+    numpy.polynomial.laguerre.lagroots
+    numpy.polynomial.chebyshev.chebroots
+    numpy.polynomial.hermite_e.hermeroots
 
     Notes
     -----
@@ -1561,7 +1592,7 @@ def hermgauss(deg):
     the right value when integrating 1.
 
     """
-    ideg = pu._deprecate_as_int(deg, "deg")
+    ideg = pu._as_int(deg, "deg")
     if ideg <= 0:
         raise ValueError("deg must be a positive integer")
 
@@ -1629,7 +1660,7 @@ class Hermite(ABCPolyBase):
 
     The Hermite class provides the standard Python numerical methods
     '+', '-', '*', '//', '%', 'divmod', '**', and '()' as well as the
-    attributes and methods listed in the `ABCPolyBase` documentation.
+    attributes and methods listed below.
 
     Parameters
     ----------
@@ -1644,6 +1675,12 @@ class Hermite(ABCPolyBase):
         Window, see `domain` for its use. The default value is [-1, 1].
 
         .. versionadded:: 1.6.0
+    symbol : str, optional
+        Symbol used to represent the independent variable in string
+        representations of the polynomial expression, e.g. for printing.
+        The symbol must be a valid Python identifier. Default value is 'x'.
+
+        .. versionadded:: 1.24
 
     """
     # Virtual Functions
@@ -1661,7 +1698,6 @@ class Hermite(ABCPolyBase):
     _fromroots = staticmethod(hermfromroots)
 
     # Virtual properties
-    nickname = 'herm'
     domain = np.array(hermdomain)
     window = np.array(hermdomain)
     basis_name = 'H'

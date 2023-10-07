@@ -1,13 +1,12 @@
-from __future__ import division, absolute_import, print_function
-
-__all__ = ['matrix', 'bmat', 'mat', 'asmatrix']
+__all__ = ['matrix', 'bmat', 'asmatrix']
 
 import sys
 import warnings
 import ast
+
+from .._utils import set_module
 import numpy.core.numeric as N
 from numpy.core.numeric import concatenate, isscalar
-from numpy.core.overrides import set_module
 # While not in __all__, matrix_power used to be defined here, so we import
 # it for backward compatibility.
 from numpy.linalg import matrix_power
@@ -76,14 +75,15 @@ class matrix(N.ndarray):
     """
     matrix(data, dtype=None, copy=True)
 
-    .. note:: It is no longer recommended to use this class, even for linear
-              algebra. Instead use regular arrays. The class may be removed
-              in the future.
-
     Returns a matrix from an array-like object, or from a string of data.
+
     A matrix is a specialized 2-D array that retains its 2-D nature
     through operations.  It has certain special operators, such as ``*``
     (matrix multiplication) and ``**`` (matrix power).
+
+    .. note:: It is no longer recommended to use this class, even for linear
+              algebra. Instead use regular arrays. The class may be removed
+              in the future.
 
     Parameters
     ----------
@@ -331,7 +331,7 @@ class matrix(N.ndarray):
         Parameters
         ----------
         axis : None or int or tuple of ints, optional
-            Selects a subset of the single-dimensional entries in the shape.
+            Selects a subset of the axes of length one in the shape.
             If an axis is selected with shape entry greater than one,
             an error is raised.
 
@@ -789,7 +789,7 @@ class matrix(N.ndarray):
                 [3]])
 
         """
-        return N.ndarray.ptp(self, axis, out)._align(axis)
+        return N.ptp(self, axis, out)._align(axis)
 
     @property
     def I(self):
@@ -804,7 +804,7 @@ class matrix(N.ndarray):
         -------
         ret : matrix object
             If `self` is non-singular, `ret` is such that ``ret * self`` ==
-            ``self * ret`` == ``np.matrix(np.eye(self[0,:].size)`` all return
+            ``self * ret`` == ``np.matrix(np.eye(self[0,:].size))`` all return
             ``True``.
 
         Raises
@@ -831,9 +831,9 @@ class matrix(N.ndarray):
         """
         M, N = self.shape
         if M == N:
-            from numpy.dual import inv as func
+            from numpy.linalg import inv as func
         else:
-            from numpy.dual import pinv as func
+            from numpy.linalg import pinv as func
         return asmatrix(func(self))
 
     @property
@@ -1026,8 +1026,8 @@ def _from_string(str, gdict, ldict):
             except KeyError:
                 try:
                     thismat = gdict[col]
-                except KeyError:
-                    raise KeyError("%s not found" % (col,))
+                except KeyError as e:
+                    raise NameError(f"name {col!r} is not defined") from None
 
             coltup.append(thismat)
         rowtup.append(concatenate(coltup, axis=-1))
@@ -1046,7 +1046,7 @@ def bmat(obj, ldict=None, gdict=None):
         referenced by name.
     ldict : dict, optional
         A dictionary that replaces local operands in current frame.
-        Ignored if `obj` is not a string or `gdict` is `None`.
+        Ignored if `obj` is not a string or `gdict` is None.
     gdict : dict, optional
         A dictionary that replaces global operands in current frame.
         Ignored if `obj` is not a string.
@@ -1064,10 +1064,10 @@ def bmat(obj, ldict=None, gdict=None):
 
     Examples
     --------
-    >>> A = np.mat('1 1; 1 1')
-    >>> B = np.mat('2 2; 2 2')
-    >>> C = np.mat('3 4; 5 6')
-    >>> D = np.mat('7 8; 9 0')
+    >>> A = np.asmatrix('1 1; 1 1')
+    >>> B = np.asmatrix('2 2; 2 2')
+    >>> C = np.asmatrix('3 4; 5 6')
+    >>> D = np.asmatrix('7 8; 9 0')
 
     All the following expressions construct the same block matrix:
 
@@ -1111,5 +1111,3 @@ def bmat(obj, ldict=None, gdict=None):
         return matrix(concatenate(arr_rows, axis=0))
     if isinstance(obj, N.ndarray):
         return matrix(obj)
-
-mat = asmatrix

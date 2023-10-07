@@ -1,10 +1,10 @@
+.. currentmodule:: numpy
+
 .. _arrays.ndarray:
 
 ******************************************
 The N-dimensional array (:class:`ndarray`)
 ******************************************
-
-.. currentmodule:: numpy
 
 An :class:`ndarray` is a (usually fixed-size) multidimensional
 container of items of the same type and size. The number of dimensions
@@ -26,7 +26,7 @@ changes made in one :class:`ndarray` may be visible in another. That
 is, an ndarray can be a *"view"* to another ndarray, and the data it
 is referring to is taken care of by the *"base"* ndarray. ndarrays can
 also be views to memory owned by Python :class:`strings <str>` or
-objects implementing the :class:`buffer` or :ref:`array
+objects implementing the :class:`memoryview` or :ref:`array
 <arrays.interface>` interfaces.
 
 
@@ -37,7 +37,7 @@ objects implementing the :class:`buffer` or :ref:`array
 
    >>> x = np.array([[1, 2, 3], [4, 5, 6]], np.int32)
    >>> type(x)
-   <type 'numpy.ndarray'>
+   <class 'numpy.ndarray'>
    >>> x.shape
    (2, 3)
    >>> x.dtype
@@ -47,19 +47,20 @@ objects implementing the :class:`buffer` or :ref:`array
 
    >>> # The element of x in the *second* row, *third* column, namely, 6.
    >>> x[1, 2]
+   6
 
    For example :ref:`slicing <arrays.indexing>` can produce views of
    the array:
 
    >>> y = x[:,1]
    >>> y
-   array([2, 5])
+   array([2, 5], dtype=int32)
    >>> y[0] = 9 # this also changes the corresponding element in x
    >>> y
-   array([9, 5])
+   array([9, 5], dtype=int32)
    >>> x
    array([[1, 9, 3],
-          [4, 5, 6]])
+          [4, 5, 6]], dtype=int32)
 
 
 Constructing arrays
@@ -132,17 +133,22 @@ Both the C and Fortran orders are :term:`contiguous`, *i.e.,*
 single-segment, memory layouts, in which every part of the
 memory block can be accessed by some combination of the indices.
 
+.. note::
+
+    *Contiguous arrays* and *single-segment arrays* are synonymous
+    and are used interchangeably throughout the documentation.
+
 While a C-style and Fortran-style contiguous array, which has the corresponding
 flags set, can be addressed with the above strides, the actual strides may be
 different. This can happen in two cases:
 
-    1. If ``self.shape[k] == 1`` then for any legal index ``index[k] == 0``.
-       This means that in the formula for the offset :math:`n_k = 0` and thus
-       :math:`s_k n_k = 0` and the value of :math:`s_k` `= self.strides[k]` is
-       arbitrary.
-    2. If an array has no elements (``self.size == 0``) there is no legal
-       index and the strides are never used. Any array with no elements may be
-       considered C-style and Fortran-style contiguous.
+1. If ``self.shape[k] == 1`` then for any legal index ``index[k] == 0``.
+   This means that in the formula for the offset :math:`n_k = 0` and thus
+   :math:`s_k n_k = 0` and the value of :math:`s_k` `= self.strides[k]` is
+   arbitrary.
+2. If an array has no elements (``self.size == 0``) there is no legal
+   index and the strides are never used. Any array with no elements may be
+   considered C-style and Fortran-style contiguous.
 
 Point 1. means that ``self`` and ``self.squeeze()`` always have the same
 contiguity and ``aligned`` flags value. This also means
@@ -153,19 +159,7 @@ contiguous at the same time.
 
 An array is considered aligned if the memory offsets for all elements and the
 base offset itself is a multiple of `self.itemsize`. Understanding
-`memory-alignment` leads to better performance on most hardware.
-
-.. note::
-
-    Points (1) and (2) are not yet applied by default. Beginning with
-    NumPy 1.8.0, they are applied consistently only if the environment
-    variable ``NPY_RELAXED_STRIDES_CHECKING=1`` was defined when NumPy
-    was built. Eventually this will become the default.
-
-    You can check whether this option was enabled when your NumPy was
-    built by looking at the value of ``np.ones((10,1),
-    order='C').flags.f_contiguous``. If this is ``True``, then your
-    NumPy has relaxed strides checking enabled.
+*memory-alignment* leads to better performance on most hardware.
 
 .. warning::
 
@@ -173,8 +167,8 @@ base offset itself is a multiple of `self.itemsize`. Understanding
     for C-style contiguous arrays or ``self.strides[0] == self.itemsize`` for
     Fortran-style contiguous arrays is true.
 
-Data in new :class:`ndarrays <ndarray>` is in the :term:`row-major`
-(C) order, unless otherwise specified, but, for example, :ref:`basic
+Data in new :class:`ndarrays <ndarray>` is in the :term:`row-major` (C)
+order, unless otherwise specified, but, for example, :ref:`basic
 array slicing <arrays.indexing>` often produces :term:`views <view>`
 in a different scheme.
 
@@ -241,7 +235,6 @@ Other attributes
    ndarray.real
    ndarray.imag
    ndarray.flat
-   ndarray.ctypes
 
 
 .. _arrays.ndarray.array-interface:
@@ -251,10 +244,10 @@ Array interface
 
 .. seealso:: :ref:`arrays.interface`.
 
-==========================  ===================================
-:obj:`__array_interface__`  Python-side of the array interface
-:obj:`__array_struct__`     C-side of the array interface
-==========================  ===================================
+==================================  ===================================
+:obj:`~object.__array_interface__`  Python-side of the array interface
+:obj:`~object.__array_struct__`     C-side of the array interface
+==================================  ===================================
 
 :mod:`ctypes` foreign function interface
 ----------------------------------------
@@ -280,7 +273,7 @@ For the following methods there are also corresponding functions in
 :func:`clip`, :func:`compress`, :func:`copy`, :func:`cumprod`,
 :func:`cumsum`, :func:`diagonal`, :func:`imag`, :func:`max <amax>`,
 :func:`mean`, :func:`min <amin>`, :func:`nonzero`, :func:`partition`,
-:func:`prod`, :func:`ptp`, :func:`put`, :func:`ravel`, :func:`real`,
+:func:`prod`, :func:`put`, :func:`ravel`, :func:`real`,
 :func:`repeat`, :func:`reshape`, :func:`round <around>`,
 :func:`searchsorted`, :func:`sort`, :func:`squeeze`, :func:`std`,
 :func:`sum`, :func:`swapaxes`, :func:`take`, :func:`trace`,
@@ -294,7 +287,6 @@ Array conversion
 
    ndarray.item
    ndarray.tolist
-   ndarray.itemset
    ndarray.tostring
    ndarray.tobytes
    ndarray.tofile
@@ -329,7 +321,7 @@ Item selection and manipulation
 -------------------------------
 
 For array methods that take an *axis* keyword, it defaults to
-:const:`None`. If axis is *None*, then the array is treated as a 1-D
+*None*. If axis is *None*, then the array is treated as a 1-D
 array. Any other value for *axis* represents the dimension along which
 the operation should proceed.
 
@@ -371,6 +363,7 @@ Many of these methods take an argument named *axis*. In such cases,
    A 3-dimensional array of size 3 x 3 x 3, summed over each of its
    three axes
 
+   >>> x = np.arange(27).reshape((3,3,3))
    >>> x
    array([[[ 0,  1,  2],
            [ 3,  4,  5],
@@ -416,7 +409,6 @@ be performed.
    ndarray.argmax
    ndarray.min
    ndarray.argmin
-   ndarray.ptp
    ndarray.clip
    ndarray.conj
    ndarray.round
@@ -460,7 +452,7 @@ Comparison operators:
    ndarray.__eq__
    ndarray.__ne__
 
-Truth value of an array (:func:`bool()`):
+Truth value of an array (:class:`bool() <bool>`):
 
 .. autosummary::
    :toctree: generated/
@@ -512,10 +504,6 @@ Arithmetic:
    - Any third argument to :func:`pow()` is silently ignored,
      as the underlying :func:`ufunc <power>` takes only two arguments.
 
-   - The three division operators are all defined; :obj:`div` is active
-     by default, :obj:`truediv` is active when
-     :obj:`__future__` division is in effect.
-
    - Because :class:`ndarray` is a built-in type (written in C), the
      ``__r{op}__`` special methods are not directly defined.
 
@@ -562,10 +550,8 @@ Matrix Multiplication:
 .. note::
 
    Matrix operators ``@`` and ``@=`` were introduced in Python 3.5
-   following PEP465. NumPy 1.10.0 has a preliminary implementation of ``@``
-   for testing purposes. Further documentation can be found in the
-   :func:`matmul` documentation.
-
+   following :pep:`465`, and the ``@`` operator has been introduced in NumPy
+   1.10.0. Further information can be found in the :func:`matmul` documentation.
 
 Special methods
 ===============
@@ -599,9 +585,9 @@ Container customization: (see :ref:`Indexing <arrays.indexing>`)
    ndarray.__setitem__
    ndarray.__contains__
 
-Conversion; the operations :func:`int()`, :func:`float()` and
-:func:`complex()`.
-. They work only on arrays that have one element in them
+Conversion; the operations :class:`int() <int>`,
+:class:`float() <float>` and :class:`complex() <complex>`.
+They work only on arrays that have one element in them
 and return the appropriate scalar.
 
 .. autosummary::
@@ -618,3 +604,10 @@ String representations:
 
    ndarray.__str__
    ndarray.__repr__
+
+Utility method for typing:
+
+.. autosummary::
+   :toctree: generated/
+
+   ndarray.__class_getitem__

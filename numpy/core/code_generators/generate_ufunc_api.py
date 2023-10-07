@@ -1,12 +1,9 @@
-from __future__ import division, print_function
-
 import os
+import argparse
+
 import genapi
-
+from genapi import TypeApi, FunctionApi
 import numpy_api
-
-from genapi import \
-        TypeApi, GlobalVarApi, FunctionApi, BoolValuesApi
 
 h_template = r"""
 #ifdef _UMATHMODULE
@@ -33,7 +30,7 @@ static void **PyUFunc_API=NULL;
 
 %s
 
-static NPY_INLINE int
+static inline int
 _import_umath(void)
 {
   PyObject *numpy = PyImport_ImportModule("numpy.core._multiarray_umath");
@@ -51,21 +48,12 @@ _import_umath(void)
       return -1;
   }
 
-#if PY_VERSION_HEX >= 0x03000000
   if (!PyCapsule_CheckExact(c_api)) {
       PyErr_SetString(PyExc_RuntimeError, "_UFUNC_API is not PyCapsule object");
       Py_DECREF(c_api);
       return -1;
   }
   PyUFunc_API = (void **)PyCapsule_GetPointer(c_api, NULL);
-#else
-  if (!PyCObject_Check(c_api)) {
-      PyErr_SetString(PyExc_RuntimeError, "_UFUNC_API is not PyCObject object");
-      Py_DECREF(c_api);
-      return -1;
-  }
-  PyUFunc_API = (void **)PyCObject_AsVoidPtr(c_api);
-#endif
   Py_DECREF(c_api);
   if (PyUFunc_API == NULL) {
       PyErr_SetString(PyExc_RuntimeError, "_UFUNC_API is NULL pointer");
@@ -74,12 +62,6 @@ _import_umath(void)
   return 0;
 }
 
-#if PY_VERSION_HEX >= 0x03000000
-#define NUMPY_IMPORT_UMATH_RETVAL NULL
-#else
-#define NUMPY_IMPORT_UMATH_RETVAL
-#endif
-
 #define import_umath() \
     do {\
         UFUNC_NOFPE\
@@ -87,7 +69,7 @@ _import_umath(void)
             PyErr_Print();\
             PyErr_SetString(PyExc_ImportError,\
                     "numpy.core.umath failed to import");\
-            return NUMPY_IMPORT_UMATH_RETVAL;\
+            return NULL;\
         }\
     } while(0)
 
@@ -140,8 +122,7 @@ def generate_api(output_dir, force=False):
 
     h_file = os.path.join(output_dir, '__%s.h' % basename)
     c_file = os.path.join(output_dir, '__%s.c' % basename)
-    d_file = os.path.join(output_dir, '%s.txt' % basename)
-    targets = (h_file, c_file, d_file)
+    targets = (h_file, c_file)
 
     sources = ['ufunc_api_order.txt']
 
@@ -155,7 +136,6 @@ def generate_api(output_dir, force=False):
 def do_generate_api(targets, sources):
     header_file = targets[0]
     c_file = targets[1]
-    doc_file = targets[2]
 
     ufunc_api_index = genapi.merge_api_dicts((
             numpy_api.ufunc_funcs_api,
@@ -185,6 +165,11 @@ def do_generate_api(targets, sources):
 
     for name, index in genapi.order_dict(ufunc_api_index):
         api_item = ufunc_api_dict[name]
+        # In NumPy 2.0 the API may have holes (which may be filled again)
+        # in that case, add `NULL` to fill it.
+        while len(init_list) < api_item.index:
+            init_list.append("        NULL")
+
         extension_list.append(api_item.define_from_array_api_string())
         init_list.append(api_item.array_api_define())
         module_list.append(api_item.internal_define())
@@ -197,15 +182,23 @@ def do_generate_api(targets, sources):
     s = c_template % ',\n'.join(init_list)
     genapi.write_file(c_file, s)
 
-    # Write to documentation
-    s = '''
-=================
-NumPy Ufunc C-API
-=================
-'''
-    for func in ufunc_api_list:
-        s += func.to_ReST()
-        s += '\n\n'
-    genapi.write_file(doc_file, s)
-
     return targets
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-o",
+        "--outdir",
+        type=str,
+        help="Path to the output directory"
+    )
+    args = parser.parse_args()
+
+    outdir_abs = os.path.join(os.getcwd(), args.outdir)
+
+    generate_api(outdir_abs)
+
+
+if __name__ == "__main__":
+    main()

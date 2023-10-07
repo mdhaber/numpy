@@ -1,15 +1,14 @@
 Philox Counter-based RNG
-------------------------
+========================
 
-.. module:: numpy.random.philox
-
-.. currentmodule:: numpy.random.philox
+.. currentmodule:: numpy.random
 
 .. autoclass:: Philox
-	:exclude-members:
+    :members: __init__
+    :exclude-members: __init__
 
 State
-=====
+-----
 
 .. autosummary::
    :toctree: generated/
@@ -17,7 +16,7 @@ State
    ~Philox.state
 
 Parallel generation
-===================
+-------------------
 .. autosummary::
    :toctree: generated/
 
@@ -25,7 +24,7 @@ Parallel generation
    ~Philox.jumped
 
 Extending
-=========
+---------
 .. autosummary::
    :toctree: generated/
 

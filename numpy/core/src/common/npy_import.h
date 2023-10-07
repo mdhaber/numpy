@@ -1,5 +1,5 @@
-#ifndef NPY_IMPORT_H
-#define NPY_IMPORT_H
+#ifndef NUMPY_CORE_SRC_COMMON_NPY_IMPORT_H_
+#define NUMPY_CORE_SRC_COMMON_NPY_IMPORT_H_
 
 #include <Python.h>
 
@@ -16,10 +16,10 @@
  * @param attr module attribute to cache.
  * @param cache Storage location for imported function.
  */
-NPY_INLINE static void
+static inline void
 npy_cache_import(const char *module, const char *attr, PyObject **cache)
 {
-    if (*cache == NULL) {
+    if (NPY_UNLIKELY(*cache == NULL)) {
         PyObject *mod = PyImport_ImportModule(module);
 
         if (mod != NULL) {
@@ -29,4 +29,4 @@ npy_cache_import(const char *module, const char *attr, PyObject **cache)
     }
 }
 
-#endif
+#endif  /* NUMPY_CORE_SRC_COMMON_NPY_IMPORT_H_ */

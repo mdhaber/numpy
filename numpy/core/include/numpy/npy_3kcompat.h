@@ -1,22 +1,22 @@
 /*
  * This is a convenience header file providing compatibility utilities
- * for supporting Python 2 and Python 3 in the same code base.
+ * for supporting different minor versions of Python 3.
+ * It was originally used to support the transition from Python 2,
+ * hence the "3k" naming.
  *
  * If you want to use this for your own projects, it's recommended to make a
  * copy of it. Although the stuff below is unlikely to change, we don't provide
  * strong backwards compatibility guarantees at the moment.
  */
 
-#ifndef _NPY_3KCOMPAT_H_
-#define _NPY_3KCOMPAT_H_
+#ifndef NUMPY_CORE_INCLUDE_NUMPY_NPY_3KCOMPAT_H_
+#define NUMPY_CORE_INCLUDE_NUMPY_NPY_3KCOMPAT_H_
 
 #include <Python.h>
 #include <stdio.h>
 
-#if PY_VERSION_HEX >= 0x03000000
 #ifndef NPY_PY3K
 #define NPY_PY3K 1
-#endif
 #endif
 
 #include "numpy/npy_common.h"
@@ -30,9 +30,33 @@ extern "C" {
  * PyInt -> PyLong
  */
 
+
+/*
+ * This is a renamed copy of the Python non-limited API function _PyLong_AsInt. It is
+ * included here because it is missing from the PyPy API. It completes the PyLong_As*
+ * group of functions and can be useful in replacing PyInt_Check.
+ */
+static inline int
+Npy__PyLong_AsInt(PyObject *obj)
+{
+    int overflow;
+    long result = PyLong_AsLongAndOverflow(obj, &overflow);
+
+    /* INT_MAX and INT_MIN are defined in Python.h */
+    if (overflow || result > INT_MAX || result < INT_MIN) {
+        /* XXX: could be cute and give a different
+           message for overflow == -1 */
+        PyErr_SetString(PyExc_OverflowError,
+                        "Python int too large to convert to C int");
+        return -1;
+    }
+    return (int)result;
+}
+
+
 #if defined(NPY_PY3K)
 /* Return True only if the long fits in a C long */
-static NPY_INLINE int PyInt_Check(PyObject *op) {
+static inline int PyInt_Check(PyObject *op) {
     int overflow = 0;
     if (!PyLong_Check(op)) {
         return 0;
@@ -41,10 +65,12 @@ static NPY_INLINE int PyInt_Check(PyObject *op) {
     return (overflow == 0);
 }
 
+
 #define PyInt_FromLong PyLong_FromLong
 #define PyInt_AsLong PyLong_AsLong
 #define PyInt_AS_LONG PyLong_AsLong
 #define PyInt_AsSsize_t PyLong_AsSsize_t
+#define PyNumber_Int PyNumber_Long
 
 /* NOTE:
  *
@@ -61,23 +87,17 @@ static NPY_INLINE int PyInt_Check(PyObject *op) {
     PySlice_GetIndicesEx((PySliceObject *)op, nop, start, end, step, slicelength)
 #endif
 
-/* <2.7.11 and <3.4.4 have the wrong argument type for Py_EnterRecursiveCall */
-#if (PY_VERSION_HEX < 0x02070B00) || \
-    ((0x03000000 <= PY_VERSION_HEX) && (PY_VERSION_HEX < 0x03040400))
-    #define Npy_EnterRecursiveCall(x) Py_EnterRecursiveCall((char *)(x))
-#else
-    #define Npy_EnterRecursiveCall(x) Py_EnterRecursiveCall(x)
+#if PY_VERSION_HEX < 0x030900a4
+    /* Introduced in https://github.com/python/cpython/commit/d2ec81a8c99796b51fb8c49b77a7fe369863226f */
+    #define Py_SET_TYPE(obj, type) ((Py_TYPE(obj) = (type)), (void)0)
+    /* Introduced in https://github.com/python/cpython/commit/b10dc3e7a11fcdb97e285882eba6da92594f90f9 */
+    #define Py_SET_SIZE(obj, size) ((Py_SIZE(obj) = (size)), (void)0)
+    /* Introduced in https://github.com/python/cpython/commit/c86a11221df7e37da389f9c6ce6e47ea22dc44ff */
+    #define Py_SET_REFCNT(obj, refcnt) ((Py_REFCNT(obj) = (refcnt)), (void)0)
 #endif
 
-/* Py_SETREF was added in 3.5.2, and only if Py_LIMITED_API is absent */
-#if PY_VERSION_HEX < 0x03050200
-    #define Py_SETREF(op, op2)                      \
-        do {                                        \
-            PyObject *_py_tmp = (PyObject *)(op);   \
-            (op) = (op2);                           \
-            Py_DECREF(_py_tmp);                     \
-        } while (0)
-#endif
+
+#define Npy_EnterRecursiveCall(x) Py_EnterRecursiveCall(x)
 
 /*
  * PyString -> PyBytes
@@ -147,15 +167,35 @@ static NPY_INLINE int PyInt_Check(PyObject *op) {
 
 #endif /* NPY_PY3K */
 
+/*
+ * Macros to protect CRT calls against instant termination when passed an
+ * invalid parameter (https://bugs.python.org/issue23524).
+ */
+#if defined _MSC_VER && _MSC_VER >= 1900
 
-static NPY_INLINE void
+#include <stdlib.h>
+
+extern _invalid_parameter_handler _Py_silent_invalid_parameter_handler;
+#define NPY_BEGIN_SUPPRESS_IPH { _invalid_parameter_handler _Py_old_handler = \
+    _set_thread_local_invalid_parameter_handler(_Py_silent_invalid_parameter_handler);
+#define NPY_END_SUPPRESS_IPH _set_thread_local_invalid_parameter_handler(_Py_old_handler); }
+
+#else
+
+#define NPY_BEGIN_SUPPRESS_IPH
+#define NPY_END_SUPPRESS_IPH
+
+#endif /* _MSC_VER >= 1900 */
+
+
+static inline void
 PyUnicode_ConcatAndDel(PyObject **left, PyObject *right)
 {
     Py_SETREF(*left, PyUnicode_Concat(*left, right));
     Py_DECREF(right);
 }
 
-static NPY_INLINE void
+static inline void
 PyUnicode_Concat2(PyObject **left, PyObject *right)
 {
     Py_SETREF(*left, PyUnicode_Concat(*left, right));
@@ -168,10 +208,11 @@ PyUnicode_Concat2(PyObject **left, PyObject *right)
 /*
  * Get a FILE* handle to the file represented by the Python object
  */
-static NPY_INLINE FILE*
+static inline FILE*
 npy_PyFile_Dup2(PyObject *file, char *mode, npy_off_t *orig_pos)
 {
     int fd, fd2, unbuf;
+    Py_ssize_t fd2_tmp;
     PyObject *ret, *os, *io, *io_raw;
     npy_off_t pos;
     FILE *handle;
@@ -207,18 +248,31 @@ npy_PyFile_Dup2(PyObject *file, char *mode, npy_off_t *orig_pos)
     if (ret == NULL) {
         return NULL;
     }
-    fd2 = PyNumber_AsSsize_t(ret, NULL);
+    fd2_tmp = PyNumber_AsSsize_t(ret, PyExc_IOError);
     Py_DECREF(ret);
+    if (fd2_tmp == -1 && PyErr_Occurred()) {
+        return NULL;
+    }
+    if (fd2_tmp < INT_MIN || fd2_tmp > INT_MAX) {
+        PyErr_SetString(PyExc_IOError,
+                        "Getting an 'int' from os.dup() failed");
+        return NULL;
+    }
+    fd2 = (int)fd2_tmp;
 
     /* Convert to FILE* handle */
 #ifdef _WIN32
+    NPY_BEGIN_SUPPRESS_IPH
     handle = _fdopen(fd2, mode);
+    NPY_END_SUPPRESS_IPH
 #else
     handle = fdopen(fd2, mode);
 #endif
     if (handle == NULL) {
         PyErr_SetString(PyExc_IOError,
-                        "Getting a FILE* from a Python file object failed");
+                        "Getting a FILE* from a Python file object via "
+                        "_fdopen failed. If you built NumPy, you probably "
+                        "linked with the wrong debug/release runtime");
         return NULL;
     }
 
@@ -274,7 +328,7 @@ npy_PyFile_Dup2(PyObject *file, char *mode, npy_off_t *orig_pos)
 /*
  * Close the dup-ed file handle, and seek the Python one to the current position
  */
-static NPY_INLINE int
+static inline int
 npy_PyFile_DupClose2(PyObject *file, FILE* handle, npy_off_t orig_pos)
 {
     int fd, unbuf;
@@ -341,7 +395,7 @@ npy_PyFile_DupClose2(PyObject *file, FILE* handle, npy_off_t orig_pos)
     return 0;
 }
 
-static NPY_INLINE int
+static inline int
 npy_PyFile_Check(PyObject *file)
 {
     int fd;
@@ -359,7 +413,7 @@ npy_PyFile_Check(PyObject *file)
     return 1;
 }
 
-static NPY_INLINE PyObject*
+static inline PyObject*
 npy_PyFile_OpenFile(PyObject *filename, const char *mode)
 {
     PyObject *open;
@@ -370,7 +424,7 @@ npy_PyFile_OpenFile(PyObject *filename, const char *mode)
     return PyObject_CallFunction(open, "Os", filename, mode);
 }
 
-static NPY_INLINE int
+static inline int
 npy_PyFile_CloseFile(PyObject *file)
 {
     PyObject *ret;
@@ -386,7 +440,7 @@ npy_PyFile_CloseFile(PyObject *file)
 
 /* This is a copy of _PyErr_ChainExceptions
  */
-static NPY_INLINE void
+static inline void
 npy_PyErr_ChainExceptions(PyObject *exc, PyObject *val, PyObject *tb)
 {
     if (exc == NULL)
@@ -418,7 +472,7 @@ npy_PyErr_ChainExceptions(PyObject *exc, PyObject *val, PyObject *tb)
  *  - a minimal implementation for python 2
  *  - __cause__ used instead of __context__
  */
-static NPY_INLINE void
+static inline void
 npy_PyErr_ChainExceptionsCause(PyObject *exc, PyObject *val, PyObject *tb)
 {
     if (exc == NULL)
@@ -449,7 +503,7 @@ npy_PyErr_ChainExceptionsCause(PyObject *exc, PyObject *val, PyObject *tb)
  * PyObject_Cmp
  */
 #if defined(NPY_PY3K)
-static NPY_INLINE int
+static inline int
 PyObject_Cmp(PyObject *i1, PyObject *i2, int *cmp)
 {
     int v;
@@ -489,9 +543,7 @@ PyObject_Cmp(PyObject *i1, PyObject *i2, int *cmp)
  * The main job here is to get rid of the improved error handling
  * of PyCapsules. It's a shame...
  */
-#if PY_VERSION_HEX >= 0x03000000
-
-static NPY_INLINE PyObject *
+static inline PyObject *
 NpyCapsule_FromVoidPtr(void *ptr, void (*dtor)(PyObject *))
 {
     PyObject *ret = PyCapsule_New(ptr, NULL, dtor);
@@ -501,7 +553,7 @@ NpyCapsule_FromVoidPtr(void *ptr, void (*dtor)(PyObject *))
     return ret;
 }
 
-static NPY_INLINE PyObject *
+static inline PyObject *
 NpyCapsule_FromVoidPtrAndDesc(void *ptr, void* context, void (*dtor)(PyObject *))
 {
     PyObject *ret = NpyCapsule_FromVoidPtr(ptr, dtor);
@@ -513,7 +565,7 @@ NpyCapsule_FromVoidPtrAndDesc(void *ptr, void* context, void (*dtor)(PyObject *)
     return ret;
 }
 
-static NPY_INLINE void *
+static inline void *
 NpyCapsule_AsVoidPtr(PyObject *obj)
 {
     void *ret = PyCapsule_GetPointer(obj, NULL);
@@ -523,55 +575,21 @@ NpyCapsule_AsVoidPtr(PyObject *obj)
     return ret;
 }
 
-static NPY_INLINE void *
+static inline void *
 NpyCapsule_GetDesc(PyObject *obj)
 {
     return PyCapsule_GetContext(obj);
 }
 
-static NPY_INLINE int
+static inline int
 NpyCapsule_Check(PyObject *ptr)
 {
     return PyCapsule_CheckExact(ptr);
 }
 
-#else
-
-static NPY_INLINE PyObject *
-NpyCapsule_FromVoidPtr(void *ptr, void (*dtor)(void *))
-{
-    return PyCObject_FromVoidPtr(ptr, dtor);
-}
-
-static NPY_INLINE PyObject *
-NpyCapsule_FromVoidPtrAndDesc(void *ptr, void* context,
-        void (*dtor)(void *, void *))
-{
-    return PyCObject_FromVoidPtrAndDesc(ptr, context, dtor);
-}
-
-static NPY_INLINE void *
-NpyCapsule_AsVoidPtr(PyObject *ptr)
-{
-    return PyCObject_AsVoidPtr(ptr);
-}
-
-static NPY_INLINE void *
-NpyCapsule_GetDesc(PyObject *obj)
-{
-    return PyCObject_GetDesc(obj);
-}
-
-static NPY_INLINE int
-NpyCapsule_Check(PyObject *ptr)
-{
-    return PyCObject_Check(ptr);
-}
-
-#endif
-
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _NPY_3KCOMPAT_H_ */
+
+#endif  /* NUMPY_CORE_INCLUDE_NUMPY_NPY_3KCOMPAT_H_ */

@@ -1,7 +1,8 @@
-#include <Python.h>
-
 #define NPY_NO_DEPRECATED_API NPY_API_VERSION
 #define _MULTIARRAYMODULE
+
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
 
 #include "numpy/ndarraytypes.h"
 #include "numpy/npy_math.h"
@@ -100,16 +101,12 @@ done:
 static PyObject *
 _PyLong_Bytes(PyObject *long_obj) {
     PyObject *bytes;
-#if defined(NPY_PY3K)
     PyObject *unicode = PyObject_Str(long_obj);
     if (unicode == NULL) {
         return NULL;
     }
     bytes = PyUnicode_AsUTF8String(unicode);
     Py_DECREF(unicode);
-#else
-    bytes = PyObject_Str(long_obj);
-#endif
     return bytes;
 }
 

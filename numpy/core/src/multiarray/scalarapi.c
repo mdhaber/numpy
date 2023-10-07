@@ -1,9 +1,10 @@
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
-#include "structmember.h"
-
 #define NPY_NO_DEPRECATED_API NPY_API_VERSION
 #define _MULTIARRAYMODULE
+
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
+#include <structmember.h>
+
 #include "numpy/arrayobject.h"
 #include "numpy/arrayscalars.h"
 
@@ -35,7 +36,7 @@ scalar_value(PyObject *scalar, PyArray_Descr *descr)
 {
     int type_num;
     int align;
-    npy_intp memloc;
+    uintptr_t memloc;
     if (descr == NULL) {
         descr = PyArray_DescrFromScalar(scalar);
         type_num = descr->type_num;
@@ -45,7 +46,7 @@ scalar_value(PyObject *scalar, PyArray_Descr *descr)
         type_num = descr->type_num;
     }
     switch (type_num) {
-#define CASE(ut,lt) case NPY_##ut: return &(((Py##lt##ScalarObject *)scalar)->obval)
+#define CASE(ut,lt) case NPY_##ut: return &PyArrayScalar_VAL(scalar, lt)
         CASE(BOOL, Bool);
         CASE(BYTE, Byte);
         CASE(UBYTE, UByte);
@@ -69,85 +70,35 @@ scalar_value(PyObject *scalar, PyArray_Descr *descr)
         CASE(TIMEDELTA, Timedelta);
 #undef CASE
         case NPY_STRING:
-            return (void *)PyString_AS_STRING(scalar);
+            return (void *)PyBytes_AsString(scalar);
         case NPY_UNICODE:
-            return (void *)PyUnicode_AS_DATA(scalar);
+            /* lazy initialization, to reduce the memory used by string scalars */
+            if (PyArrayScalar_VAL(scalar, Unicode) == NULL) {
+                Py_UCS4 *raw_data = PyUnicode_AsUCS4Copy(scalar);
+                if (raw_data == NULL) {
+                    return NULL;
+                }
+                PyArrayScalar_VAL(scalar, Unicode) = raw_data;
+                return (void *)raw_data;
+            }
+            return PyArrayScalar_VAL(scalar, Unicode);
         case NPY_VOID:
-            return ((PyVoidScalarObject *)scalar)->obval;
+            /* Note: no & needed here, so can't use CASE */
+            return PyArrayScalar_VAL(scalar, Void);
     }
 
     /*
-     * Must be a user-defined type --- check to see which
-     * scalar it inherits from.
+     * Must be a user defined type with an associated (registered) dtype.
+     * Thus, it cannot be flexible (user dtypes cannot be), so we can (and
+     * pretty much have no choice but to) assume the below logic always works.
+     * I.e. this assumes that the logic would also works for most of our types.
      */
-
-#define _CHK(cls) (PyObject_IsInstance(scalar, \
-            (PyObject *)&Py##cls##ArrType_Type))
-#define _OBJ(lt) &(((Py##lt##ScalarObject *)scalar)->obval)
-#define _IFCASE(cls) if _CHK(cls) return _OBJ(cls)
-
-    if _CHK(Number) {
-        if _CHK(Integer) {
-            if _CHK(SignedInteger) {
-                _IFCASE(Byte);
-                _IFCASE(Short);
-                _IFCASE(Int);
-                _IFCASE(Long);
-                _IFCASE(LongLong);
-                _IFCASE(Timedelta);
-            }
-            else {
-                /* Unsigned Integer */
-                _IFCASE(UByte);
-                _IFCASE(UShort);
-                _IFCASE(UInt);
-                _IFCASE(ULong);
-                _IFCASE(ULongLong);
-            }
-        }
-        else {
-            /* Inexact */
-            if _CHK(Floating) {
-                _IFCASE(Half);
-                _IFCASE(Float);
-                _IFCASE(Double);
-                _IFCASE(LongDouble);
-            }
-            else {
-                /*ComplexFloating */
-                _IFCASE(CFloat);
-                _IFCASE(CDouble);
-                _IFCASE(CLongDouble);
-            }
-        }
-    }
-    else if (_CHK(Bool)) {
-        return _OBJ(Bool);
-    }
-    else if (_CHK(Datetime)) {
-        return _OBJ(Datetime);
-    }
-    else if (_CHK(Flexible)) {
-        if (_CHK(String)) {
-            return (void *)PyString_AS_STRING(scalar);
-        }
-        if (_CHK(Unicode)) {
-            return (void *)PyUnicode_AS_DATA(scalar);
-        }
-        if (_CHK(Void)) {
-            return ((PyVoidScalarObject *)scalar)->obval;
-        }
-    }
-    else {
-        _IFCASE(Object);
-    }
-
 
     /*
      * Use the alignment flag to figure out where the data begins
      * after a PyObject_HEAD
      */
-    memloc = (npy_intp)scalar;
+    memloc = (uintptr_t)scalar;
     memloc += sizeof(PyObject);
     /* now round-up to the nearest alignment value */
     align = descr->alignment;
@@ -155,17 +106,20 @@ scalar_value(PyObject *scalar, PyArray_Descr *descr)
         memloc = ((memloc + align - 1)/align)*align;
     }
     return (void *)memloc;
-#undef _IFCASE
-#undef _OBJ
-#undef _CHK
 }
 
 /*NUMPY_API
- * return true an object is exactly a numpy scalar
+ * return 1 if an object is exactly a numpy scalar
  */
 NPY_NO_EXPORT int
 PyArray_CheckAnyScalarExact(PyObject * obj)
 {
+    if (obj == NULL) {
+        PyErr_SetString(PyExc_ValueError,
+            "obj is NULL in PyArray_CheckAnyScalarExact");
+        return 0;
+    }
+
     return is_anyscalar_exact(obj);
 }
 
@@ -212,8 +166,12 @@ PyArray_CastScalarToCtype(PyObject *scalar, void *ctypeptr,
     PyArray_VectorUnaryFunc* castfunc;
 
     descr = PyArray_DescrFromScalar(scalar);
+    if (descr == NULL) {
+        return -1;
+    }
     castfunc = PyArray_GetCastFunc(descr, outcode->type_num);
     if (castfunc == NULL) {
+        Py_DECREF(descr);
         return -1;
     }
     if (PyTypeNum_ISEXTENDED(descr->type_num) ||
@@ -233,6 +191,7 @@ PyArray_CastScalarToCtype(PyObject *scalar, void *ctypeptr,
                     NPY_ARRAY_CARRAY, NULL);
         if (aout == NULL) {
             Py_DECREF(ain);
+            Py_DECREF(descr);
             return -1;
         }
         castfunc(PyArray_DATA(ain), PyArray_DATA(aout), 1, ain, aout);
@@ -277,14 +236,10 @@ PyArray_CastScalarDirect(PyObject *scalar, PyArray_Descr *indescr,
 NPY_NO_EXPORT PyObject *
 PyArray_FromScalar(PyObject *scalar, PyArray_Descr *outcode)
 {
-    PyArray_Descr *typecode;
-    PyArrayObject *r;
-    char *memptr;
-    PyObject *ret;
-
     /* convert to 0-dim array of scalar typecode */
-    typecode = PyArray_DescrFromScalar(scalar);
+    PyArray_Descr *typecode = PyArray_DescrFromScalar(scalar);
     if (typecode == NULL) {
+        Py_XDECREF(outcode);
         return NULL;
     }
     if ((typecode->type_num == NPY_VOID) &&
@@ -298,37 +253,26 @@ PyArray_FromScalar(PyObject *scalar, PyArray_Descr *outcode)
                 NULL, (PyObject *)scalar);
     }
 
-    /* Need to INCREF typecode because PyArray_NewFromDescr steals a
-     * reference below and we still need to access typecode afterwards. */
-    Py_INCREF(typecode);
-    r = (PyArrayObject *)PyArray_NewFromDescr(&PyArray_Type,
+    PyArrayObject *r = (PyArrayObject *)PyArray_NewFromDescr(&PyArray_Type,
             typecode,
             0, NULL,
             NULL, NULL, 0, NULL);
-    if (r==NULL) {
-        Py_DECREF(typecode); Py_XDECREF(outcode);
+    if (r == NULL) {
+        Py_XDECREF(outcode);
         return NULL;
     }
+    /* the dtype used by the array may be different to the one requested */
+    typecode = PyArray_DESCR(r);
     if (PyDataType_FLAGCHK(typecode, NPY_USE_SETITEM)) {
         if (typecode->f->setitem(scalar, PyArray_DATA(r), r) < 0) {
-            Py_DECREF(typecode); Py_XDECREF(outcode); Py_DECREF(r);
+            Py_DECREF(r);
+            Py_XDECREF(outcode);
             return NULL;
         }
-        goto finish;
     }
+    else {
+        char *memptr = scalar_value(scalar, typecode);
 
-    memptr = scalar_value(scalar, typecode);
-
-#ifndef Py_UNICODE_WIDE
-    if (typecode->type_num == NPY_UNICODE) {
-        PyUCS2Buffer_AsUCS4((Py_UNICODE *)memptr,
-                (npy_ucs4 *)PyArray_DATA(r),
-                PyUnicode_GET_SIZE(scalar),
-                PyArray_ITEMSIZE(r) >> 2);
-    }
-    else
-#endif
-    {
         memcpy(PyArray_DATA(r), memptr, PyArray_ITEMSIZE(r));
         if (PyDataType_FLAGCHK(typecode, NPY_ITEM_HASOBJECT)) {
             /* Need to INCREF just the PyObject portion */
@@ -336,88 +280,29 @@ PyArray_FromScalar(PyObject *scalar, PyArray_Descr *outcode)
         }
     }
 
-finish:
     if (outcode == NULL) {
-        Py_DECREF(typecode);
         return (PyObject *)r;
     }
     if (PyArray_EquivTypes(outcode, typecode)) {
         if (!PyTypeNum_ISEXTENDED(typecode->type_num)
                 || (outcode->elsize == typecode->elsize)) {
-            Py_DECREF(typecode); Py_DECREF(outcode);
+            /*
+             * Since the type is equivalent, and we haven't handed the array
+             * to anyone yet, let's fix the dtype to be what was requested,
+             * even if it is equivalent to what was passed in.
+             */
+            Py_SETREF(((PyArrayObject_fields *)r)->descr, outcode);
+
             return (PyObject *)r;
         }
     }
 
     /* cast if necessary to desired output typecode */
-    ret = PyArray_CastToType((PyArrayObject *)r, outcode, 0);
-    Py_DECREF(typecode); Py_DECREF(r);
+    PyObject *ret = PyArray_CastToType(r, outcode, 0);
+    Py_DECREF(r);
     return ret;
 }
 
-/*NUMPY_API
- * Get an Array Scalar From a Python Object
- *
- * Returns NULL if unsuccessful but error is only set if another error occurred.
- * Currently only Numeric-like object supported.
- */
-NPY_NO_EXPORT PyObject *
-PyArray_ScalarFromObject(PyObject *object)
-{
-    PyObject *ret=NULL;
-    if (PyArray_IsZeroDim(object)) {
-        return PyArray_ToScalar(PyArray_DATA((PyArrayObject *)object),
-                                (PyArrayObject *)object);
-    }
-    /*
-     * Booleans in Python are implemented as a subclass of integers,
-     * so PyBool_Check must be called before PyInt_Check.
-     */
-    if (PyBool_Check(object)) {
-        if (object == Py_True) {
-            PyArrayScalar_RETURN_TRUE;
-        }
-        else {
-            PyArrayScalar_RETURN_FALSE;
-        }
-    }
-    else if (PyInt_Check(object)) {
-        ret = PyArrayScalar_New(Long);
-        if (ret == NULL) {
-            return NULL;
-        }
-        PyArrayScalar_VAL(ret, Long) = PyInt_AS_LONG(object);
-    }
-    else if (PyFloat_Check(object)) {
-        ret = PyArrayScalar_New(Double);
-        if (ret == NULL) {
-            return NULL;
-        }
-        PyArrayScalar_VAL(ret, Double) = PyFloat_AS_DOUBLE(object);
-    }
-    else if (PyComplex_Check(object)) {
-        ret = PyArrayScalar_New(CDouble);
-        if (ret == NULL) {
-            return NULL;
-        }
-        PyArrayScalar_VAL(ret, CDouble).real = PyComplex_RealAsDouble(object);
-        PyArrayScalar_VAL(ret, CDouble).imag = PyComplex_ImagAsDouble(object);
-    }
-    else if (PyLong_Check(object)) {
-        npy_longlong val;
-        val = PyLong_AsLongLong(object);
-        if (error_converting(val)) {
-            PyErr_Clear();
-            return NULL;
-        }
-        ret = PyArrayScalar_New(LongLong);
-        if (ret == NULL) {
-            return NULL;
-        }
-        PyArrayScalar_VAL(ret, LongLong) = val;
-    }
-    return ret;
-}
 
 /*New reference */
 /*NUMPY_API
@@ -425,37 +310,69 @@ PyArray_ScalarFromObject(PyObject *object)
 NPY_NO_EXPORT PyArray_Descr *
 PyArray_DescrFromTypeObject(PyObject *type)
 {
-    int typenum;
-    PyArray_Descr *new, *conv = NULL;
-
     /* if it's a builtin type, then use the typenumber */
-    typenum = _typenum_fromtypeobj(type,1);
+    int typenum = _typenum_fromtypeobj(type,1);
     if (typenum != NPY_NOTYPE) {
-        new = PyArray_DescrFromType(typenum);
-        return new;
+        return PyArray_DescrFromType(typenum);
     }
 
     /* Check the generic types */
     if ((type == (PyObject *) &PyNumberArrType_Type) ||
             (type == (PyObject *) &PyInexactArrType_Type) ||
             (type == (PyObject *) &PyFloatingArrType_Type)) {
+        if (DEPRECATE("Converting `np.inexact` or `np.floating` to "
+                      "a dtype is deprecated. The current result is `float64` "
+                      "which is not strictly correct.") < 0) {
+            return NULL;
+        }
         typenum = NPY_DOUBLE;
     }
     else if (type == (PyObject *)&PyComplexFloatingArrType_Type) {
+        if (DEPRECATE("Converting `np.complex` to a dtype is deprecated. "
+                      "The current result is `complex128` which is not "
+                      "strictly correct.") < 0) {
+            return NULL;
+        }
         typenum = NPY_CDOUBLE;
     }
     else if ((type == (PyObject *)&PyIntegerArrType_Type) ||
             (type == (PyObject *)&PySignedIntegerArrType_Type)) {
+        if (DEPRECATE("Converting `np.integer` or `np.signedinteger` to "
+                      "a dtype is deprecated. The current result is "
+                      "`np.dtype(np.int_)` which is not strictly correct. "
+                      "Note that the result depends on the system. To ensure "
+                      "stable results use may want to use `np.int64` or "
+                      "`np.int32`.") < 0) {
+            return NULL;
+        }
         typenum = NPY_LONG;
     }
     else if (type == (PyObject *) &PyUnsignedIntegerArrType_Type) {
+        if (DEPRECATE("Converting `np.unsignedinteger` to a dtype is "
+                      "deprecated. The current result is `np.dtype(np.uint)` "
+                      "which is not strictly correct. Note that the result "
+                      "depends on the system. To ensure stable results you may "
+                      "want to use `np.uint64` or `np.uint32`.") < 0) {
+            return NULL;
+        }
         typenum = NPY_ULONG;
     }
     else if (type == (PyObject *) &PyCharacterArrType_Type) {
+        if (DEPRECATE("Converting `np.character` to a dtype is deprecated. "
+                      "The current result is `np.dtype(np.str_)` "
+                      "which is not strictly correct. Note that `np.character` "
+                      "is generally deprecated and 'S1' should be used.") < 0) {
+            return NULL;
+        }
         typenum = NPY_STRING;
     }
     else if ((type == (PyObject *) &PyGenericArrType_Type) ||
             (type == (PyObject *) &PyFlexibleArrType_Type)) {
+        if (DEPRECATE("Converting `np.generic` to a dtype is "
+                      "deprecated. The current result is `np.dtype(np.void)` "
+                      "which is not strictly correct.") < 0) {
+            return NULL;
+        }
         typenum = NPY_VOID;
     }
 
@@ -470,11 +387,12 @@ PyArray_DescrFromTypeObject(PyObject *type)
 
     /* Do special thing for VOID sub-types */
     if (PyType_IsSubtype((PyTypeObject *)type, &PyVoidArrType_Type)) {
-        new = PyArray_DescrNewFromType(NPY_VOID);
+        PyArray_Descr *new = PyArray_DescrNewFromType(NPY_VOID);
         if (new == NULL) {
             return NULL;
         }
-        if (_arraydescr_from_dtype_attr(type, &conv)) {
+        PyArray_Descr *conv = _arraydescr_try_convert_from_dtype_attr(type);
+        if ((PyObject *)conv != Py_NotImplemented) {
             if (conv == NULL) {
                 Py_DECREF(new);
                 return NULL;
@@ -486,8 +404,8 @@ PyArray_DescrFromTypeObject(PyObject *type)
             new->elsize = conv->elsize;
             new->subarray = conv->subarray;
             conv->subarray = NULL;
-            Py_DECREF(conv);
         }
+        Py_DECREF(conv);
         Py_XDECREF(new->typeobj);
         new->typeobj = (PyTypeObject *)type;
         Py_INCREF(type);
@@ -564,17 +482,20 @@ PyArray_DescrFromScalar(PyObject *sc)
     }
 
     descr = PyArray_DescrFromTypeObject((PyObject *)Py_TYPE(sc));
+    if (descr == NULL) {
+        return NULL;
+    }
     if (PyDataType_ISUNSIZED(descr)) {
         PyArray_DESCR_REPLACE(descr);
+        if (descr == NULL) {
+            return NULL;
+        }
         type_num = descr->type_num;
         if (type_num == NPY_STRING) {
-            descr->elsize = PyString_GET_SIZE(sc);
+            descr->elsize = PyBytes_GET_SIZE(sc);
         }
         else if (type_num == NPY_UNICODE) {
-            descr->elsize = PyUnicode_GET_DATA_SIZE(sc);
-#ifndef Py_UNICODE_WIDE
-            descr->elsize <<= 1;
-#endif
+            descr->elsize = PyUnicode_GET_LENGTH(sc) * 4;
         }
         else {
             PyArray_Descr *dtype;
@@ -656,25 +577,31 @@ PyArray_Scalar(void *data, PyArray_Descr *descr, PyObject *base)
             itemsize = (((itemsize - 1) >> 2) + 1) << 2;
         }
     }
-#if PY_VERSION_HEX >= 0x03030000
     if (type_num == NPY_UNICODE) {
-        PyObject *u, *args;
-        int byteorder;
+        /* we need the full string length here, else copyswap will write too
+           many bytes */
+        void *buff = PyArray_malloc(descr->elsize);
+        if (buff == NULL) {
+            return PyErr_NoMemory();
+        }
+        /* copyswap needs an array object, but only actually cares about the
+         * dtype
+         */
+        PyArrayObject_fields dummy_arr;
+        if (base == NULL) {
+            dummy_arr.descr = descr;
+            base = (PyObject *)&dummy_arr;
+        }
+        copyswap(buff, data, swap, base);
 
-#if NPY_BYTE_ORDER == NPY_LITTLE_ENDIAN
-        byteorder = -1;
-#elif NPY_BYTE_ORDER == NPY_BIG_ENDIAN
-        byteorder = +1;
-#else
-        #error Endianness undefined ?
-#endif
-        if (swap) byteorder *= -1;
-
-        u = PyUnicode_DecodeUTF32(data, itemsize, NULL, &byteorder);
+        /* truncation occurs here */
+        PyObject *u = PyUnicode_FromKindAndData(PyUnicode_4BYTE_KIND, buff, itemsize / 4);
+        PyArray_free(buff);
         if (u == NULL) {
             return NULL;
         }
-        args = Py_BuildValue("(O)", u);
+
+        PyObject *args = Py_BuildValue("(O)", u);
         if (args == NULL) {
             Py_DECREF(u);
             return NULL;
@@ -684,7 +611,6 @@ PyArray_Scalar(void *data, PyArray_Descr *descr, PyObject *base)
         Py_DECREF(args);
         return obj;
     }
-#endif
     if (type->tp_itemsize != 0) {
         /* String type */
         obj = type->tp_alloc(type, itemsize);
@@ -708,94 +634,20 @@ PyArray_Scalar(void *data, PyArray_Descr *descr, PyObject *base)
     }
     if (PyTypeNum_ISFLEXIBLE(type_num)) {
         if (type_num == NPY_STRING) {
-            destptr = PyString_AS_STRING(obj);
-            ((PyStringObject *)obj)->ob_shash = -1;
-#if !defined(NPY_PY3K)
-            ((PyStringObject *)obj)->ob_sstate = SSTATE_NOT_INTERNED;
-#endif
+            destptr = PyBytes_AS_STRING(obj);
+            #if PY_VERSION_HEX < 0x030b00b0
+                ((PyBytesObject *)obj)->ob_shash = -1;
+            #endif
             memcpy(destptr, data, itemsize);
             return obj;
         }
-#if PY_VERSION_HEX < 0x03030000
-        else if (type_num == NPY_UNICODE) {
-            /* tp_alloc inherited from Python PyBaseObject_Type */
-            PyUnicodeObject *uni = (PyUnicodeObject*)obj;
-            size_t length = itemsize >> 2;
-            Py_UNICODE *dst;
-#ifndef Py_UNICODE_WIDE
-            char *buffer;
-            Py_UNICODE *tmp;
-            int alloc = 0;
-
-            length *= 2;
-#endif
-            /* Set uni->str so that object can be deallocated on failure */
-            uni->str = NULL;
-            uni->defenc = NULL;
-            uni->hash = -1;
-            dst = PyObject_MALLOC(sizeof(Py_UNICODE) * (length + 1));
-            if (dst == NULL) {
-                Py_DECREF(obj);
-                PyErr_NoMemory();
-                return NULL;
-            }
-#ifdef Py_UNICODE_WIDE
-            memcpy(dst, data, itemsize);
-            if (swap) {
-                byte_swap_vector(dst, length, 4);
-            }
-            uni->str = dst;
-            uni->str[length] = 0;
-            uni->length = length;
-#else
-            /* need aligned data buffer */
-            if ((swap) || ((((npy_intp)data) % descr->alignment) != 0)) {
-                buffer = malloc(itemsize);
-                if (buffer == NULL) {
-                    PyObject_FREE(dst);
-                    Py_DECREF(obj);
-                    PyErr_NoMemory();
-                }
-                alloc = 1;
-                memcpy(buffer, data, itemsize);
-                if (swap) {
-                    byte_swap_vector(buffer, itemsize >> 2, 4);
-                }
-            }
-            else {
-                buffer = data;
-            }
-
-            /*
-             * Allocated enough for 2-characters per itemsize.
-             * Now convert from the data-buffer
-             */
-            length = PyUCS2Buffer_FromUCS4(dst,
-                    (npy_ucs4 *)buffer, itemsize >> 2);
-            if (alloc) {
-                free(buffer);
-            }
-            /* Resize the unicode result */
-            tmp = PyObject_REALLOC(dst, sizeof(Py_UNICODE)*(length + 1));
-            if (tmp == NULL) {
-                PyObject_FREE(dst);
-                Py_DECREF(obj);
-                return NULL;
-            }
-            uni->str = tmp;
-            uni->str[length] = 0;
-            uni->length = length;
-#endif
-            return obj;
-        }
-#endif /* PY_VERSION_HEX < 0x03030000 */
         else {
             PyVoidScalarObject *vobj = (PyVoidScalarObject *)obj;
             vobj->base = NULL;
             vobj->descr = descr;
             Py_INCREF(descr);
             vobj->obval = NULL;
-            Py_SIZE(vobj) = itemsize;
+            Py_SET_SIZE(vobj, itemsize);
             vobj->flags = NPY_ARRAY_CARRAY | NPY_ARRAY_F_CONTIGUOUS | NPY_ARRAY_OWNDATA;
             swap = 0;
             if (PyDataType_HASFIELDS(descr)) {

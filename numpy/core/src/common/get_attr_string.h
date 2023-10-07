@@ -1,15 +1,15 @@
-#ifndef __GET_ATTR_STRING_H
-#define __GET_ATTR_STRING_H
+#ifndef NUMPY_CORE_SRC_COMMON_GET_ATTR_STRING_H_
+#define NUMPY_CORE_SRC_COMMON_GET_ATTR_STRING_H_
 
-static NPY_INLINE npy_bool
+#include <Python.h>
+#include "ufunc_object.h"
+
+static inline npy_bool
 _is_basic_python_type(PyTypeObject *tp)
 {
     return (
         /* Basic number types */
         tp == &PyBool_Type ||
-#if !defined(NPY_PY3K)
-        tp == &PyInt_Type ||
-#endif
         tp == &PyLong_Type ||
         tp == &PyFloat_Type ||
         tp == &PyComplex_Type ||
@@ -22,9 +22,6 @@ _is_basic_python_type(PyTypeObject *tp)
         tp == &PyFrozenSet_Type ||
         tp == &PyUnicode_Type ||
         tp == &PyBytes_Type ||
-#if !defined(NPY_PY3K)
-        tp == &PyString_Type ||
-#endif
 
         /* other builtins */
         tp == &PySlice_Type ||
@@ -39,63 +36,18 @@ _is_basic_python_type(PyTypeObject *tp)
     );
 }
 
-/*
- * Stripped down version of PyObject_GetAttrString,
- * avoids lookups for None, tuple, and List objects,
- * and doesn't create a PyErr since this code ignores it.
- *
- * This can be much faster then PyObject_GetAttrString where
- * exceptions are not used by caller.
- *
- * 'obj' is the object to search for attribute.
- *
- * 'name' is the attribute to search for.
- *
- * Returns attribute value on success, NULL on failure.
- */
-static NPY_INLINE PyObject *
-maybe_get_attr(PyObject *obj, char *name)
-{
-    PyTypeObject *tp = Py_TYPE(obj);
-    PyObject *res = (PyObject *)NULL;
-
-    /* Attribute referenced by (char *)name */
-    if (tp->tp_getattr != NULL) {
-        res = (*tp->tp_getattr)(obj, name);
-        if (res == NULL) {
-            PyErr_Clear();
-        }
-    }
-    /* Attribute referenced by (PyObject *)name */
-    else if (tp->tp_getattro != NULL) {
-#if defined(NPY_PY3K)
-        PyObject *w = PyUnicode_InternFromString(name);
-#else
-        PyObject *w = PyString_InternFromString(name);
-#endif
-        if (w == NULL) {
-            return (PyObject *)NULL;
-        }
-        res = (*tp->tp_getattro)(obj, w);
-        Py_DECREF(w);
-        if (res == NULL) {
-            PyErr_Clear();
-        }
-    }
-    return res;
-}
 
 /*
  * Lookup a special method, following the python approach of looking up
  * on the type object, rather than on the instance itself.
  *
  * Assumes that the special method is a numpy-specific one, so does not look
- * at builtin types, nor does it look at a base ndarray.
+ * at builtin types. It does check base ndarray and numpy scalar types.
  *
  * In future, could be made more like _Py_LookupSpecial
  */
-static NPY_INLINE PyObject *
-PyArray_LookupSpecial(PyObject *obj, char *name)
+static inline PyObject *
+PyArray_LookupSpecial(PyObject *obj, PyObject *name_unicode)
 {
     PyTypeObject *tp = Py_TYPE(obj);
 
@@ -103,8 +55,15 @@ PyArray_LookupSpecial(PyObject *obj, char *name)
     if (_is_basic_python_type(tp)) {
         return NULL;
     }
-    return maybe_get_attr((PyObject *)tp, name);
+    PyObject *res = PyObject_GetAttr((PyObject *)tp, name_unicode);
+
+    if (res == NULL && PyErr_ExceptionMatches(PyExc_AttributeError)) {
+        PyErr_Clear();
+    }
+
+    return res;
 }
+
 
 /*
  * PyArray_LookupSpecial_OnInstance:
@@ -114,8 +73,8 @@ PyArray_LookupSpecial(PyObject *obj, char *name)
  *
  * Kept for backwards compatibility. In future, we should deprecate this.
  */
-static NPY_INLINE PyObject *
-PyArray_LookupSpecial_OnInstance(PyObject *obj, char *name)
+static inline PyObject *
+PyArray_LookupSpecial_OnInstance(PyObject *obj, PyObject *name_unicode)
 {
     PyTypeObject *tp = Py_TYPE(obj);
 
@@ -124,7 +83,13 @@ PyArray_LookupSpecial_OnInstance(PyObject *obj, char *name)
         return NULL;
     }
 
-    return maybe_get_attr(obj, name);
+    PyObject *res = PyObject_GetAttr(obj, name_unicode);
+
+    if (res == NULL && PyErr_ExceptionMatches(PyExc_AttributeError)) {
+        PyErr_Clear();
+    }
+
+    return res;
 }
 
-#endif
+#endif  /* NUMPY_CORE_SRC_COMMON_GET_ATTR_STRING_H_ */

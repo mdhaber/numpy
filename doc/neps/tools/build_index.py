@@ -1,10 +1,10 @@
 """
 Scan the directory of nep files and extract their metadata.  The
-metadata is passed to Jinja for filling out `index.rst.tmpl`.
+metadata is passed to Jinja for filling out the toctrees for various NEP
+categories.
 """
 
 import os
-import sys
 import jinja2
 import glob
 import re
@@ -23,6 +23,7 @@ def nep_metadata():
 
     meta_re = r':([a-zA-Z\-]*): (.*)'
 
+    has_provisional = False
     neps = {}
     print('Loading metadata for:')
     for source in sources:
@@ -35,15 +36,23 @@ def nep_metadata():
             tags = [match.groups() for match in tags if match is not None]
             tags = {tag[0]: tag[1] for tag in tags}
 
-            # We could do a clever regexp, but for now just assume the title is
-            # the second line of the document
-            tags['Title'] = lines[1].strip()
+            # The title should be the first line after a line containing only
+            # * or = signs.
+            for i, line in enumerate(lines[:-1]):
+                chars = set(line.rstrip())
+                if len(chars) == 1 and ("=" in chars or "*" in chars):
+                    break
+            else:
+                raise RuntimeError("Unable to find NEP title.")
+
+            tags['Title'] = lines[i+1].strip()
             tags['Filename'] = source
 
         if not tags['Title'].startswith(f'NEP {nr} — '):
             raise RuntimeError(
                 f'Title for NEP {nr} does not start with "NEP {nr} — " '
-                '(note that — here is a special, enlongated dash)')
+                '(note that — here is a special, elongated dash). Got: '
+                f'    {tags["Title"]!r}')
 
         if tags['Status'] in ('Accepted', 'Rejected', 'Withdrawn'):
             if not 'Resolution' in tags:
@@ -51,6 +60,8 @@ def nep_metadata():
                     f'NEP {nr} is Accepted/Rejected/Withdrawn but '
                     'has no Resolution tag'
                 )
+        if tags['Status'] == 'Provisional':
+            has_provisional = True
 
         neps[nr] = tags
 
@@ -88,16 +99,18 @@ def nep_metadata():
                     f'been set to Superseded'
                 )
 
-    return {'neps': neps}
-
-
-infile = 'index.rst.tmpl'
-outfile = 'index.rst'
+    return {'neps': neps, 'has_provisional': has_provisional}
 
 meta = nep_metadata()
 
-print(f'Compiling {infile} -> {outfile}')
-index = render(infile, meta)
+for nepcat in (
+    "provisional", "accepted", "deferred", "finished", "meta",
+    "open", "rejected",
+):
+    infile = f"{nepcat}.rst.tmpl"
+    outfile =f"{nepcat}.rst"
 
-with open(outfile, 'w') as f:
-    f.write(index)
+    print(f'Compiling {infile} -> {outfile}')
+    genf = render(infile, meta)
+    with open(outfile, 'w') as f:
+        f.write(genf)

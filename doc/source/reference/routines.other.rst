@@ -1,5 +1,5 @@
 Miscellaneous routines
-**********************
+======================
 
 .. toctree::
 
@@ -21,7 +21,7 @@ Memory ranges
 
    shares_memory
    may_share_memory
-   byte_bounds
+   lib.array_utils.byte_bounds
 
 Array mixins
 ------------
@@ -44,13 +44,12 @@ Utility
    :toctree: generated/
 
    get_include
-   deprecate
-   deprecate_with_doc
+   show_config
+   show_runtime
+   broadcast_shapes
+   lib.array_utils.normalize_axis_index
+   lib.array_utils.normalize_axis_tuple
 
-Matlab-like Functions
----------------------
-.. autosummary::
-   :toctree: generated/
+.. automodule:: numpy.exceptions
 
-   who
-   disp
+.. automodule:: numpy.dtypes

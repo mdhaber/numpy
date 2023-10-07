@@ -1,5 +1,7 @@
 """
-Objects for dealing with polynomials.
+=================================================
+Power Series (:mod:`numpy.polynomial.polynomial`)
+=================================================
 
 This module provides a number of objects (mostly functions) useful for
 dealing with polynomials, including a `Polynomial` class that
@@ -7,56 +9,69 @@ encapsulates the usual arithmetic operations.  (General information
 on how this module represents and works with polynomial objects is in
 the docstring for its "parent" sub-package, `numpy.polynomial`).
 
+Classes
+-------
+.. autosummary::
+   :toctree: generated/
+
+   Polynomial
+
 Constants
 ---------
-- `polydomain` -- Polynomial default domain, [-1,1].
-- `polyzero` -- (Coefficients of the) "zero polynomial."
-- `polyone` -- (Coefficients of the) constant polynomial 1.
-- `polyx` -- (Coefficients of the) identity map polynomial, ``f(x) = x``.
+.. autosummary::
+   :toctree: generated/
+
+   polydomain
+   polyzero
+   polyone
+   polyx
 
 Arithmetic
 ----------
-- `polyadd` -- add two polynomials.
-- `polysub` -- subtract one polynomial from another.
-- `polymulx` -- multiply a polynomial in ``P_i(x)`` by ``x``.
-- `polymul` -- multiply two polynomials.
-- `polydiv` -- divide one polynomial by another.
-- `polypow` -- raise a polynomial to a positive integer power.
-- `polyval` -- evaluate a polynomial at given points.
-- `polyval2d` -- evaluate a 2D polynomial at given points.
-- `polyval3d` -- evaluate a 3D polynomial at given points.
-- `polygrid2d` -- evaluate a 2D polynomial on a Cartesian product.
-- `polygrid3d` -- evaluate a 3D polynomial on a Cartesian product.
+.. autosummary::
+   :toctree: generated/
+
+   polyadd
+   polysub
+   polymulx
+   polymul
+   polydiv
+   polypow
+   polyval
+   polyval2d
+   polyval3d
+   polygrid2d
+   polygrid3d
 
 Calculus
 --------
-- `polyder` -- differentiate a polynomial.
-- `polyint` -- integrate a polynomial.
+.. autosummary::
+   :toctree: generated/
+
+   polyder
+   polyint
 
 Misc Functions
 --------------
-- `polyfromroots` -- create a polynomial with specified roots.
-- `polyroots` -- find the roots of a polynomial.
-- `polyvalfromroots` -- evaluate a polynomial at given points from roots.
-- `polyvander` -- Vandermonde-like matrix for powers.
-- `polyvander2d` -- Vandermonde-like matrix for 2D power series.
-- `polyvander3d` -- Vandermonde-like matrix for 3D power series.
-- `polycompanion` -- companion matrix in power series form.
-- `polyfit` -- least-squares fit returning a polynomial.
-- `polytrim` -- trim leading coefficients from a polynomial.
-- `polyline` -- polynomial representing given straight line.
+.. autosummary::
+   :toctree: generated/
 
-Classes
--------
-- `Polynomial` -- polynomial class.
+   polyfromroots
+   polyroots
+   polyvalfromroots
+   polyvander
+   polyvander2d
+   polyvander3d
+   polycompanion
+   polyfit
+   polytrim
+   polyline
 
 See Also
 --------
 `numpy.polynomial`
 
 """
-from __future__ import division, absolute_import, print_function
-
 __all__ = [
     'polyzero', 'polyone', 'polyx', 'polydomain', 'polyline', 'polyadd',
     'polysub', 'polymulx', 'polymul', 'polydiv', 'polypow', 'polyval',
@@ -64,7 +79,6 @@ __all__ = [
     'polyfit', 'polytrim', 'polyroots', 'Polynomial', 'polyval2d', 'polyval3d',
     'polygrid2d', 'polygrid3d', 'polyvander2d', 'polyvander3d']
 
-import warnings
 import numpy as np
 import numpy.linalg as la
 from numpy.core.multiarray import normalize_axis_index
@@ -113,7 +127,11 @@ def polyline(off, scl):
 
     See Also
     --------
-    chebline
+    numpy.polynomial.chebyshev.chebline
+    numpy.polynomial.legendre.legline
+    numpy.polynomial.laguerre.lagline
+    numpy.polynomial.hermite.hermline
+    numpy.polynomial.hermite_e.hermeline
 
     Examples
     --------
@@ -138,7 +156,7 @@ def polyfromroots(roots):
 
     .. math:: p(x) = (x - r_0) * (x - r_1) * ... * (x - r_n),
 
-    where the `r_n` are the roots specified in `roots`.  If a zero has
+    where the :math:`r_n` are the roots specified in `roots`.  If a zero has
     multiplicity n, then it must appear in `roots` n times. For instance,
     if 2 is a root of multiplicity three and 3 is a root of multiplicity 2,
     then `roots` looks something like [2, 2, 2, 3, 3]. The roots can appear
@@ -165,17 +183,20 @@ def polyfromroots(roots):
 
     See Also
     --------
-    chebfromroots, legfromroots, lagfromroots, hermfromroots
-    hermefromroots
+    numpy.polynomial.chebyshev.chebfromroots
+    numpy.polynomial.legendre.legfromroots
+    numpy.polynomial.laguerre.lagfromroots
+    numpy.polynomial.hermite.hermfromroots
+    numpy.polynomial.hermite_e.hermefromroots
 
     Notes
     -----
     The coefficients are determined by multiplying together linear factors
-    of the form `(x - r_i)`, i.e.
+    of the form ``(x - r_i)``, i.e.
 
     .. math:: p(x) = (x - r_0) (x - r_1) ... (x - r_n)
 
-    where ``n == len(roots) - 1``; note that this implies that `1` is always
+    where ``n == len(roots) - 1``; note that this implies that ``1`` is always
     returned for :math:`a_n`.
 
     Examples
@@ -496,8 +517,8 @@ def polyder(c, m=1, scl=1, axis=0):
         # astype fails with NA
         c = c + 0.0
     cdt = c.dtype
-    cnt = pu._deprecate_as_int(m, "the order of derivation")
-    iaxis = pu._deprecate_as_int(axis, "the axis")
+    cnt = pu._as_int(m, "the order of derivation")
+    iaxis = pu._as_int(axis, "the axis")
     if cnt < 0:
         raise ValueError("The order of derivation must be non-negative")
     iaxis = normalize_axis_index(iaxis, c.ndim)
@@ -606,8 +627,8 @@ def polyint(c, m=1, k=[], lbnd=0, scl=1, axis=0):
     cdt = c.dtype
     if not np.iterable(k):
         k = [k]
-    cnt = pu._deprecate_as_int(m, "the order of integration")
-    iaxis = pu._deprecate_as_int(axis, "the axis")
+    cnt = pu._as_int(m, "the order of integration")
+    iaxis = pu._as_int(axis, "the axis")
     if cnt < 0:
         raise ValueError("The order of integration must be non-negative")
     if len(k) > cnt:
@@ -751,7 +772,7 @@ def polyvalfromroots(x, r, tensor=True):
 
     If `r` is a 1-D array, then `p(x)` will have the same shape as `x`.  If `r`
     is multidimensional, then the shape of the result depends on the value of
-    `tensor`. If `tensor is ``True`` the shape will be r.shape[1:] + x.shape;
+    `tensor`. If `tensor` is ``True`` the shape will be r.shape[1:] + x.shape;
     that is, each polynomial is evaluated at every value of `x`. If `tensor` is
     ``False``, the shape will be r.shape[1:]; that is, each polynomial is
     evaluated only for the corresponding broadcast value of `x`. Note that
@@ -1005,7 +1026,7 @@ def polygrid3d(x, y, z, c):
     ----------
     x, y, z : array_like, compatible objects
         The three dimensional series is evaluated at the points in the
-        Cartesian product of `x`, `y`, and `z`.  If `x`,`y`, or `z` is a
+        Cartesian product of `x`, `y`, and `z`.  If `x`, `y`, or `z` is a
         list or tuple, it is first converted to an ndarray, otherwise it is
         left unchanged and, if it isn't an ndarray, it is treated as a
         scalar.
@@ -1072,7 +1093,7 @@ def polyvander(x, deg):
     polyvander2d, polyvander3d
 
     """
-    ideg = pu._deprecate_as_int(deg, "deg")
+    ideg = pu._as_int(deg, "deg")
     if ideg < 0:
         raise ValueError("deg must be non-negative")
 
@@ -1133,7 +1154,7 @@ def polyvander2d(x, y, deg):
     polyvander, polyvander3d, polyval2d, polyval3d
 
     """
-    return pu._vander2d(polyvander, x, y, deg)
+    return pu._vander_nd_flat((polyvander, polyvander), (x, y), deg)
 
 
 def polyvander3d(x, y, z, deg):
@@ -1187,7 +1208,7 @@ def polyvander3d(x, y, z, deg):
     .. versionadded:: 1.7.0
 
     """
-    return pu._vander3d(polyvander, x, y, z, deg)
+    return pu._vander_nd_flat((polyvander, polyvander, polyvander), (x, y, z), deg)
 
 
 def polyfit(x, y, deg, rcond=None, full=False, w=None):
@@ -1231,10 +1252,11 @@ def polyfit(x, y, deg, rcond=None, full=False, w=None):
         diagnostic information from the singular value decomposition (used
         to solve the fit's matrix equation) is also returned.
     w : array_like, shape (`M`,), optional
-        Weights. If not None, the contribution of each point
-        ``(x[i],y[i])`` to the fit is weighted by `w[i]`. Ideally the
-        weights are chosen so that the errors of the products ``w[i]*y[i]``
-        all have the same variance.  The default value is None.
+        Weights. If not None, the weight ``w[i]`` applies to the unsquared
+        residual ``y[i] - y_hat[i]`` at ``x[i]``. Ideally the weights are
+        chosen so that the errors of the products ``w[i]*y[i]`` all have the
+        same variance.  When using inverse-variance weighting, use
+        ``w[i] = 1/sigma(y[i])``.  The default value is None.
 
         .. versionadded:: 1.5.0
 
@@ -1246,31 +1268,35 @@ def polyfit(x, y, deg, rcond=None, full=False, w=None):
         fit to the data in `y`'s `k`-th column.
 
     [residuals, rank, singular_values, rcond] : list
-        These values are only returned if `full` = True
+        These values are only returned if ``full == True``
 
-        resid -- sum of squared residuals of the least squares fit
-        rank -- the numerical rank of the scaled Vandermonde matrix
-        sv -- singular values of the scaled Vandermonde matrix
-        rcond -- value of `rcond`.
+        - residuals -- sum of squared residuals of the least squares fit
+        - rank -- the numerical rank of the scaled Vandermonde matrix
+        - singular_values -- singular values of the scaled Vandermonde matrix
+        - rcond -- value of `rcond`.
 
-        For more details, see `linalg.lstsq`.
+        For more details, see `numpy.linalg.lstsq`.
 
     Raises
     ------
     RankWarning
         Raised if the matrix in the least-squares fit is rank deficient.
-        The warning is only raised if `full` == False.  The warnings can
+        The warning is only raised if ``full == False``.  The warnings can
         be turned off by:
 
         >>> import warnings
-        >>> warnings.simplefilter('ignore', np.RankWarning)
+        >>> warnings.simplefilter('ignore', np.exceptions.RankWarning)
 
     See Also
     --------
-    chebfit, legfit, lagfit, hermfit, hermefit
+    numpy.polynomial.chebyshev.chebfit
+    numpy.polynomial.legendre.legfit
+    numpy.polynomial.laguerre.lagfit
+    numpy.polynomial.hermite.hermfit
+    numpy.polynomial.hermite_e.hermefit
     polyval : Evaluates a polynomial.
     polyvander : Vandermonde matrix for powers.
-    linalg.lstsq : Computes a least-squares fit from the matrix.
+    numpy.linalg.lstsq : Computes a least-squares fit from the matrix.
     scipy.interpolate.UnivariateSpline : Computes spline fits.
 
     Notes
@@ -1278,12 +1304,12 @@ def polyfit(x, y, deg, rcond=None, full=False, w=None):
     The solution is the coefficients of the polynomial `p` that minimizes
     the sum of the weighted squared errors
 
-    .. math :: E = \\sum_j w_j^2 * |y_j - p(x_j)|^2,
+    .. math:: E = \\sum_j w_j^2 * |y_j - p(x_j)|^2,
 
     where the :math:`w_j` are the weights. This problem is solved by
     setting up the (typically) over-determined matrix equation:
 
-    .. math :: V(x) * c = w * y,
+    .. math:: V(x) * c = w * y,
 
     where `V` is the weighted pseudo Vandermonde matrix of `x`, `c` are the
     coefficients to be solved for, `w` are the weights, and `y` are the
@@ -1313,7 +1339,7 @@ def polyfit(x, y, deg, rcond=None, full=False, w=None):
     >>> np.random.seed(123)
     >>> from numpy.polynomial import polynomial as P
     >>> x = np.linspace(-1,1,51) # x "data": [-1, -0.96, ..., 0.96, 1]
-    >>> y = x**3 - x + np.random.randn(len(x)) # x^3 - x + N(0,1) "noise"
+    >>> y = x**3 - x + np.random.randn(len(x))  # x^3 - x + Gaussian noise
     >>> c, stats = P.polyfit(x,y,3,full=True)
     >>> np.random.seed(123)
     >>> c # c[0], c[2] should be approx. 0, c[1] approx. -1, c[3] approx. 1
@@ -1397,7 +1423,11 @@ def polyroots(c):
 
     See Also
     --------
-    chebroots
+    numpy.polynomial.chebyshev.chebroots
+    numpy.polynomial.legendre.legroots
+    numpy.polynomial.laguerre.lagroots
+    numpy.polynomial.hermite.hermroots
+    numpy.polynomial.hermite_e.hermeroots
 
     Notes
     -----
@@ -1444,7 +1474,7 @@ class Polynomial(ABCPolyBase):
 
     The Polynomial class provides the standard Python numerical methods
     '+', '-', '*', '//', '%', 'divmod', '**', and '()' as well as the
-    attributes and methods listed in the `ABCPolyBase` documentation.
+    attributes and methods listed below.
 
     Parameters
     ----------
@@ -1459,6 +1489,12 @@ class Polynomial(ABCPolyBase):
         Window, see `domain` for its use. The default value is [-1, 1].
 
         .. versionadded:: 1.6.0
+    symbol : str, optional
+        Symbol used to represent the independent variable in string
+        representations of the polynomial expression, e.g. for printing.
+        The symbol must be a valid Python identifier. Default value is 'x'.
+
+        .. versionadded:: 1.24
 
     """
     # Virtual Functions
@@ -1476,18 +1512,31 @@ class Polynomial(ABCPolyBase):
     _fromroots = staticmethod(polyfromroots)
 
     # Virtual properties
-    nickname = 'poly'
     domain = np.array(polydomain)
     window = np.array(polydomain)
     basis_name = None
 
+    @classmethod
+    def _str_term_unicode(cls, i, arg_str):
+        if i == '1':
+            return f"·{arg_str}"
+        else:
+            return f"·{arg_str}{i.translate(cls._superscript_mapping)}"
+
+    @staticmethod
+    def _str_term_ascii(i, arg_str):
+        if i == '1':
+            return f" {arg_str}"
+        else:
+            return f" {arg_str}**{i}"
+
     @staticmethod
     def _repr_latex_term(i, arg_str, needs_parens):
         if needs_parens:
-            arg_str = r'\left({}\right)'.format(arg_str)
+            arg_str = rf"\left({arg_str}\right)"
         if i == 0:
             return '1'
         elif i == 1:
             return arg_str
         else:
-            return '{}^{{{}}}'.format(arg_str, i)
+            return f"{arg_str}^{{{i}}}"

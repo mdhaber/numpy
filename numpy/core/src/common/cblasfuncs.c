@@ -2,16 +2,19 @@
  * This module provides a BLAS optimized matrix multiply,
  * inner product and dot for numpy arrays
  */
-
 #define NPY_NO_DEPRECATED_API NPY_API_VERSION
 #define _MULTIARRAYMODULE
 
+#define PY_SSIZE_T_CLEAN
 #include <Python.h>
-#include <assert.h>
-#include <numpy/arrayobject.h>
+
+#include "numpy/arrayobject.h"
+#include "numpy/npy_math.h"
 #include "npy_cblas.h"
 #include "arraytypes.h"
 #include "common.h"
+
+#include <assert.h>
 
 
 static const double oneD[2] = {1.0, 0.0}, zeroD[2] = {0.0, 0.0};
@@ -24,28 +27,28 @@ static const float oneF[2] = {1.0, 0.0}, zeroF[2] = {0.0, 0.0};
 static void
 gemm(int typenum, enum CBLAS_ORDER order,
      enum CBLAS_TRANSPOSE transA, enum CBLAS_TRANSPOSE transB,
-     int m, int n, int k,
-     PyArrayObject *A, int lda, PyArrayObject *B, int ldb, PyArrayObject *R)
+     npy_intp m, npy_intp n, npy_intp k,
+     PyArrayObject *A, npy_intp lda, PyArrayObject *B, npy_intp ldb, PyArrayObject *R)
 {
     const void *Adata = PyArray_DATA(A), *Bdata = PyArray_DATA(B);
     void *Rdata = PyArray_DATA(R);
-    int ldc = PyArray_DIM(R, 1) > 1 ? PyArray_DIM(R, 1) : 1;
+    npy_intp ldc = PyArray_DIM(R, 1) > 1 ? PyArray_DIM(R, 1) : 1;
 
     switch (typenum) {
         case NPY_DOUBLE:
-            cblas_dgemm(order, transA, transB, m, n, k, 1.,
+            CBLAS_FUNC(cblas_dgemm)(order, transA, transB, m, n, k, 1.,
                         Adata, lda, Bdata, ldb, 0., Rdata, ldc);
             break;
         case NPY_FLOAT:
-            cblas_sgemm(order, transA, transB, m, n, k, 1.f,
+            CBLAS_FUNC(cblas_sgemm)(order, transA, transB, m, n, k, 1.f,
                         Adata, lda, Bdata, ldb, 0.f, Rdata, ldc);
             break;
         case NPY_CDOUBLE:
-            cblas_zgemm(order, transA, transB, m, n, k, oneD,
+            CBLAS_FUNC(cblas_zgemm)(order, transA, transB, m, n, k, oneD,
                         Adata, lda, Bdata, ldb, zeroD, Rdata, ldc);
             break;
         case NPY_CFLOAT:
-            cblas_cgemm(order, transA, transB, m, n, k, oneF,
+            CBLAS_FUNC(cblas_cgemm)(order, transA, transB, m, n, k, oneF,
                         Adata, lda, Bdata, ldb, zeroF, Rdata, ldc);
             break;
     }
@@ -57,29 +60,29 @@ gemm(int typenum, enum CBLAS_ORDER order,
  */
 static void
 gemv(int typenum, enum CBLAS_ORDER order, enum CBLAS_TRANSPOSE trans,
-     PyArrayObject *A, int lda, PyArrayObject *X, int incX,
+     PyArrayObject *A, npy_intp lda, PyArrayObject *X, npy_intp incX,
      PyArrayObject *R)
 {
     const void *Adata = PyArray_DATA(A), *Xdata = PyArray_DATA(X);
     void *Rdata = PyArray_DATA(R);
 
-    int m = PyArray_DIM(A, 0), n = PyArray_DIM(A, 1);
+    npy_intp m = PyArray_DIM(A, 0), n = PyArray_DIM(A, 1);
 
     switch (typenum) {
         case NPY_DOUBLE:
-            cblas_dgemv(order, trans, m, n, 1., Adata, lda, Xdata, incX,
+            CBLAS_FUNC(cblas_dgemv)(order, trans, m, n, 1., Adata, lda, Xdata, incX,
                         0., Rdata, 1);
             break;
         case NPY_FLOAT:
-            cblas_sgemv(order, trans, m, n, 1.f, Adata, lda, Xdata, incX,
+            CBLAS_FUNC(cblas_sgemv)(order, trans, m, n, 1.f, Adata, lda, Xdata, incX,
                         0.f, Rdata, 1);
             break;
         case NPY_CDOUBLE:
-            cblas_zgemv(order, trans, m, n, oneD, Adata, lda, Xdata, incX,
+            CBLAS_FUNC(cblas_zgemv)(order, trans, m, n, oneD, Adata, lda, Xdata, incX,
                         zeroD, Rdata, 1);
             break;
         case NPY_CFLOAT:
-            cblas_cgemv(order, trans, m, n, oneF, Adata, lda, Xdata, incX,
+            CBLAS_FUNC(cblas_cgemv)(order, trans, m, n, oneF, Adata, lda, Xdata, incX,
                         zeroF, Rdata, 1);
             break;
     }
@@ -91,19 +94,19 @@ gemv(int typenum, enum CBLAS_ORDER order, enum CBLAS_TRANSPOSE trans,
  */
 static void
 syrk(int typenum, enum CBLAS_ORDER order, enum CBLAS_TRANSPOSE trans,
-     int n, int k,
-     PyArrayObject *A, int lda, PyArrayObject *R)
+     npy_intp n, npy_intp k,
+     PyArrayObject *A, npy_intp lda, PyArrayObject *R)
 {
     const void *Adata = PyArray_DATA(A);
     void *Rdata = PyArray_DATA(R);
-    int ldc = PyArray_DIM(R, 1) > 1 ? PyArray_DIM(R, 1) : 1;
+    npy_intp ldc = PyArray_DIM(R, 1) > 1 ? PyArray_DIM(R, 1) : 1;
 
     npy_intp i;
     npy_intp j;
 
     switch (typenum) {
         case NPY_DOUBLE:
-            cblas_dsyrk(order, CblasUpper, trans, n, k, 1.,
+            CBLAS_FUNC(cblas_dsyrk)(order, CblasUpper, trans, n, k, 1.,
                         Adata, lda, 0., Rdata, ldc);
 
             for (i = 0; i < n; i++) {
@@ -114,7 +117,7 @@ syrk(int typenum, enum CBLAS_ORDER order, enum CBLAS_TRANSPOSE trans,
             }
             break;
         case NPY_FLOAT:
-            cblas_ssyrk(order, CblasUpper, trans, n, k, 1.f,
+            CBLAS_FUNC(cblas_ssyrk)(order, CblasUpper, trans, n, k, 1.f,
                         Adata, lda, 0.f, Rdata, ldc);
 
             for (i = 0; i < n; i++) {
@@ -125,7 +128,7 @@ syrk(int typenum, enum CBLAS_ORDER order, enum CBLAS_TRANSPOSE trans,
             }
             break;
         case NPY_CDOUBLE:
-            cblas_zsyrk(order, CblasUpper, trans, n, k, oneD,
+            CBLAS_FUNC(cblas_zsyrk)(order, CblasUpper, trans, n, k, oneD,
                         Adata, lda, zeroD, Rdata, ldc);
 
             for (i = 0; i < n; i++) {
@@ -136,7 +139,7 @@ syrk(int typenum, enum CBLAS_ORDER order, enum CBLAS_TRANSPOSE trans,
             }
             break;
         case NPY_CFLOAT:
-            cblas_csyrk(order, CblasUpper, trans, n, k, oneF,
+            CBLAS_FUNC(cblas_csyrk)(order, CblasUpper, trans, n, k, oneF,
                         Adata, lda, zeroF, Rdata, ldc);
 
             for (i = 0; i < n; i++) {
@@ -222,7 +225,7 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
                     PyArrayObject *out)
 {
     PyArrayObject *result = NULL, *out_buf = NULL;
-    int j, lda, ldb;
+    npy_intp j, lda, ldb;
     npy_intp l;
     int nd;
     npy_intp ap1stride = 0;
@@ -385,14 +388,15 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
                                                  *((double *)PyArray_DATA(ap1));
             }
             else if (ap1shape != _matrix) {
-                cblas_daxpy(l,
+                CBLAS_FUNC(cblas_daxpy)(l,
                             *((double *)PyArray_DATA(ap2)),
                             (double *)PyArray_DATA(ap1),
                             ap1stride/sizeof(double),
                             (double *)PyArray_DATA(out_buf), 1);
             }
             else {
-                int maxind, oind, i, a1s, outs;
+                int maxind, oind;
+                npy_intp i, a1s, outs;
                 char *ptr, *optr;
                 double val;
 
@@ -405,7 +409,7 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
                 a1s = PyArray_STRIDE(ap1, maxind) / sizeof(double);
                 outs = PyArray_STRIDE(out_buf, maxind) / sizeof(double);
                 for (i = 0; i < PyArray_DIM(ap1, oind); i++) {
-                    cblas_daxpy(l, val, (double *)ptr, a1s,
+                    CBLAS_FUNC(cblas_daxpy)(l, val, (double *)ptr, a1s,
                                 (double *)optr, outs);
                     ptr += PyArray_STRIDE(ap1, oind);
                     optr += PyArray_STRIDE(out_buf, oind);
@@ -419,18 +423,21 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
                 ptr1 = (npy_cdouble *)PyArray_DATA(ap2);
                 ptr2 = (npy_cdouble *)PyArray_DATA(ap1);
                 res = (npy_cdouble *)PyArray_DATA(out_buf);
-                res->real = ptr1->real * ptr2->real - ptr1->imag * ptr2->imag;
-                res->imag = ptr1->real * ptr2->imag + ptr1->imag * ptr2->real;
+                npy_csetreal(res, npy_creal(*ptr1) * npy_creal(*ptr2)
+                                            - npy_cimag(*ptr1) * npy_cimag(*ptr2));
+                npy_csetimag(res, npy_creal(*ptr1) * npy_cimag(*ptr2)
+                                            + npy_cimag(*ptr1) * npy_creal(*ptr2));
             }
             else if (ap1shape != _matrix) {
-                cblas_zaxpy(l,
+                CBLAS_FUNC(cblas_zaxpy)(l,
                             (double *)PyArray_DATA(ap2),
                             (double *)PyArray_DATA(ap1),
                             ap1stride/sizeof(npy_cdouble),
                             (double *)PyArray_DATA(out_buf), 1);
             }
             else {
-                int maxind, oind, i, a1s, outs;
+                int maxind, oind;
+                npy_intp i, a1s, outs;
                 char *ptr, *optr;
                 double *pval;
 
@@ -443,7 +450,7 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
                 a1s = PyArray_STRIDE(ap1, maxind) / sizeof(npy_cdouble);
                 outs = PyArray_STRIDE(out_buf, maxind) / sizeof(npy_cdouble);
                 for (i = 0; i < PyArray_DIM(ap1, oind); i++) {
-                    cblas_zaxpy(l, pval, (double *)ptr, a1s,
+                    CBLAS_FUNC(cblas_zaxpy)(l, pval, (double *)ptr, a1s,
                                 (double *)optr, outs);
                     ptr += PyArray_STRIDE(ap1, oind);
                     optr += PyArray_STRIDE(out_buf, oind);
@@ -456,14 +463,15 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
                     *((float *)PyArray_DATA(ap1));
             }
             else if (ap1shape != _matrix) {
-                cblas_saxpy(l,
+                CBLAS_FUNC(cblas_saxpy)(l,
                             *((float *)PyArray_DATA(ap2)),
                             (float *)PyArray_DATA(ap1),
                             ap1stride/sizeof(float),
                             (float *)PyArray_DATA(out_buf), 1);
             }
             else {
-                int maxind, oind, i, a1s, outs;
+                int maxind, oind;
+                npy_intp i, a1s, outs;
                 char *ptr, *optr;
                 float val;
 
@@ -476,7 +484,7 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
                 a1s = PyArray_STRIDE(ap1, maxind) / sizeof(float);
                 outs = PyArray_STRIDE(out_buf, maxind) / sizeof(float);
                 for (i = 0; i < PyArray_DIM(ap1, oind); i++) {
-                    cblas_saxpy(l, val, (float *)ptr, a1s,
+                    CBLAS_FUNC(cblas_saxpy)(l, val, (float *)ptr, a1s,
                                 (float *)optr, outs);
                     ptr += PyArray_STRIDE(ap1, oind);
                     optr += PyArray_STRIDE(out_buf, oind);
@@ -490,18 +498,21 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
                 ptr1 = (npy_cfloat *)PyArray_DATA(ap2);
                 ptr2 = (npy_cfloat *)PyArray_DATA(ap1);
                 res = (npy_cfloat *)PyArray_DATA(out_buf);
-                res->real = ptr1->real * ptr2->real - ptr1->imag * ptr2->imag;
-                res->imag = ptr1->real * ptr2->imag + ptr1->imag * ptr2->real;
+                npy_csetrealf(res, npy_crealf(*ptr1) * npy_crealf(*ptr2)
+                                           - npy_cimagf(*ptr1) * npy_cimagf(*ptr2));
+                npy_csetimagf(res, npy_crealf(*ptr1) * npy_cimagf(*ptr2)
+                                           + npy_cimagf(*ptr1) * npy_crealf(*ptr2));
             }
             else if (ap1shape != _matrix) {
-                cblas_caxpy(l,
+                CBLAS_FUNC(cblas_caxpy)(l,
                             (float *)PyArray_DATA(ap2),
                             (float *)PyArray_DATA(ap1),
                             ap1stride/sizeof(npy_cfloat),
                             (float *)PyArray_DATA(out_buf), 1);
             }
             else {
-                int maxind, oind, i, a1s, outs;
+                int maxind, oind;
+                npy_intp i, a1s, outs;
                 char *ptr, *optr;
                 float *pval;
 
@@ -514,7 +525,7 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
                 a1s = PyArray_STRIDE(ap1, maxind) / sizeof(npy_cfloat);
                 outs = PyArray_STRIDE(out_buf, maxind) / sizeof(npy_cfloat);
                 for (i = 0; i < PyArray_DIM(ap1, oind); i++) {
-                    cblas_caxpy(l, pval, (float *)ptr, a1s,
+                    CBLAS_FUNC(cblas_caxpy)(l, pval, (float *)ptr, a1s,
                                 (float *)optr, outs);
                     ptr += PyArray_STRIDE(ap1, oind);
                     optr += PyArray_STRIDE(out_buf, oind);
@@ -537,7 +548,7 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
         /* Matrix vector multiplication -- Level 2 BLAS */
         /* lda must be MAX(M,1) */
         enum CBLAS_ORDER Order;
-        int ap2s;
+        npy_intp ap2s;
 
         if (!PyArray_ISONESEGMENT(ap1)) {
             PyObject *new;
@@ -564,7 +575,7 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
     else if (ap1shape != _matrix && ap2shape == _matrix) {
         /* Vector matrix multiplication -- Level 2 BLAS */
         enum CBLAS_ORDER Order;
-        int ap1s;
+        npy_intp ap1s;
 
         if (!PyArray_ISONESEGMENT(ap2)) {
             PyObject *new;
@@ -601,7 +612,7 @@ cblas_matrixproduct(int typenum, PyArrayObject *ap1, PyArrayObject *ap2,
          */
         enum CBLAS_ORDER Order;
         enum CBLAS_TRANSPOSE Trans1, Trans2;
-        int M, N, L;
+        npy_intp M, N, L;
 
         /* Optimization possible: */
         /*
