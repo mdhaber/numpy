@@ -2185,9 +2185,9 @@ def allclose(a, b, rtol=1.e-5, atol=1.e-8, equal_nan=False):
     ----------
     a, b : array_like
         Input arrays to compare.
-    rtol : float
+    rtol : array_like
         The relative tolerance parameter (see Notes).
-    atol : float
+    atol : array_like
         The absolute tolerance parameter (see Notes).
     equal_nan : bool
         Whether to compare NaN's as equal.  If True, NaN's in `a` will be
@@ -2264,9 +2264,9 @@ def isclose(a, b, rtol=1.e-5, atol=1.e-8, equal_nan=False):
     ----------
     a, b : array_like
         Input arrays to compare.
-    rtol : float
+    rtol : array_like
         The relative tolerance parameter (see Notes).
-    atol : float
+    atol : array_like
         The absolute tolerance parameter (see Notes).
     equal_nan : bool
         Whether to compare NaN's as equal.  If True, NaN's in `a` will be
