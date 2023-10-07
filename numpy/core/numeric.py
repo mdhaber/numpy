@@ -2333,6 +2333,8 @@ def isclose(a, b, rtol=1.e-5, atol=1.e-8, equal_nan=False):
 
     x = asanyarray(a)
     y = asanyarray(b)
+    atol = asanyarray(atol)
+    rtol = asanyarray(rtol)
 
     # Make sure y is an inexact type to avoid bad behavior on abs(MIN_INT).
     # This will cause casting of x later. Also, make sure to allow subclasses
@@ -2357,10 +2359,10 @@ def isclose(a, b, rtol=1.e-5, atol=1.e-8, equal_nan=False):
         # lib.stride_tricks, though, so we can't import it here.
         x = x * ones_like(cond)
         y = y * ones_like(cond)
-        rtol = np.broadcast_to(rtol, x.shape)
-        atol = np.broadcast_to(atol, x.shape)
+        atol_f = np.broadcast_to(atol, x.shape)[finite] if atol.shape else atol
+        rtol_f = np.broadcast_to(rtol, x.shape)[finite] if rtol.shape else rtol
         # Avoid subtraction with infinite/nan values...
-        cond[finite] = within_tol(x[finite], y[finite], atol[finite], rtol[finite])
+        cond[finite] = within_tol(x[finite], y[finite], atol_f, rtol_f)
         # Check for equality of infinite values...
         cond[~finite] = (x[~finite] == y[~finite])
         if equal_nan:
