@@ -2871,6 +2871,10 @@ class TestIsclose:
         assert np.allclose(x, y, atol=atol, rtol=rtol, equal_nan=True)
         assert not np.allclose(x, y, atol=0.1, rtol=0.1, equal_nan=True)
 
+        # Show that gh-14330 is resolved
+        assert np.allclose([1, 2, float('nan')], [1, 2, float('nan')],
+                           atol=[1, 1, 1], equal_nan=True)
+
     def test_ip_none_isclose(self):
         self._setup()
         for (x, y) in self.none_close_tests:

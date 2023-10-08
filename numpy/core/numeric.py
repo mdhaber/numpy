@@ -2164,7 +2164,7 @@ _identity_with_like = array_function_dispatch()(identity)
 
 
 def _allclose_dispatcher(a, b, rtol=None, atol=None, equal_nan=None):
-    return (a, b)
+    return (a, b, rtol, atol)
 
 
 @array_function_dispatch(_allclose_dispatcher)
@@ -2243,7 +2243,7 @@ def allclose(a, b, rtol=1.e-5, atol=1.e-8, equal_nan=False):
 
 
 def _isclose_dispatcher(a, b, rtol=None, atol=None, equal_nan=None):
-    return (a, b)
+    return (a, b, rtol, atol)
 
 
 @array_function_dispatch(_isclose_dispatcher)
