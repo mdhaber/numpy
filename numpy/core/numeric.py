@@ -2331,10 +2331,7 @@ def isclose(a, b, rtol=1.e-5, atol=1.e-8, equal_nan=False):
         with errstate(invalid='ignore'), _no_nep50_warning():
             return less_equal(abs(x-y), atol + rtol * abs(y))
 
-    x = asanyarray(a)
-    y = asanyarray(b)
-    atol = asanyarray(atol)
-    rtol = asanyarray(rtol)
+    x, y, atol, rtol = np.broadcast_arrays(a, b, atol, rtol, subok=True)
 
     # Make sure y is an inexact type to avoid bad behavior on abs(MIN_INT).
     # This will cause casting of x later. Also, make sure to allow subclasses
@@ -2359,10 +2356,9 @@ def isclose(a, b, rtol=1.e-5, atol=1.e-8, equal_nan=False):
         # lib.stride_tricks, though, so we can't import it here.
         x = x * ones_like(cond)
         y = y * ones_like(cond)
-        atol_f = np.broadcast_to(atol, x.shape)[finite] if atol.shape else atol
-        rtol_f = np.broadcast_to(rtol, x.shape)[finite] if rtol.shape else rtol
         # Avoid subtraction with infinite/nan values...
-        cond[finite] = within_tol(x[finite], y[finite], atol_f, rtol_f)
+        cond[finite] = within_tol(x[finite], y[finite],
+                                  atol[finite], rtol[finite])
         # Check for equality of infinite values...
         cond[~finite] = (x[~finite] == y[~finite])
         if equal_nan:
