@@ -238,61 +238,81 @@ only one "data type". The data type is recorded in the ``dtype`` attribute.
 ref:`Read more about array attributes here <arrays.ndarray>` and learn about
 :ref:`array objects here <arrays>`.
 
-How to create a basic array
----------------------------
+Creating simple one-dimensional arrays
+--------------------------------------
 
-*This section covers* ``np.zeros()``, ``np.ones()``,
-``np.empty()``, ``np.arange()``, ``np.linspace()``
+*This section covers* `numpy.zeros`, `numpy.ones`,
+`numpy.full`, `numpy.arange`, and `numpy.linspace`.
 
 -----
 
-Besides creating an array from a sequence of elements, you can easily create an
-array filled with ``0``'s::
+Besides creating an array from a sequence of individual elements, we can
+create arrays filled with a constant value::
 
-  >>> np.zeros(2)
-  array([0., 0.])
+    >>> two_zeros = np.zeros(2)
+    >>> two_zeros
+    array([0., 0.])
+    >>>
+    >>> three_ones = np.ones(3)
+    >>> three_ones
+    array([1., 1., 1.])
+    >>>
+    >>> four_fives = np.full(4, fill_value=5.)
+    >>> four_fives
+    array([5., 5., 5., 5.])
 
-Or an array filled with ``1``'s::
+Such arrays are often used as starting points for more complex arrays, which
+we can get by modifying some of the existing elements.
 
-  >>> np.ones(2)
-  array([1., 1.])
+    >>> x = np.ones(7)
+    >>> x[4:6] = 2.
+    >>> x
+    array([1., 1., 1., 1., 2., 2., 1.])
 
-Or even an empty array! The function ``empty`` creates an array whose initial
-content is random and depends on the state of the memory. The reason to use
-``empty`` over ``zeros`` (or something similar) is speed - just make sure to
-fill every element afterwards! ::
+Slightly more complex than a constant array is a linearly-spaced array.
+The usage of `numpy.arange` is similar to that of Python's `range` function.
 
-  >>> # Create an empty array with 2 elements
-  >>> np.empty(2) #doctest: +SKIP
-  array([3.14, 42.  ])  # may vary
+    >>> np.arange(4.)
+    array([0., 1., 2., 3.])
+    >>> np.arange(1, 4, 0.5)  # start, end (exclusive), step
+    array([1. , 1.5, 2. , 2.5, 3. , 3.5])
 
-You can create an array with a range of elements::
+`numpy.linspace` can be used to form the same array, but in some
+circumstances, the syntax is more convenient.
 
-  >>> np.arange(4)
-  array([0, 1, 2, 3])
+    >>> np.linspace(1, 3.5, num=6)  # start, end (inclusive), number of elements
+    array([1. , 1.5, 2. , 2.5, 3. , 3.5])
 
-And even an array that contains a range of evenly spaced intervals. To do this,
-you will specify the **first number**, **last number**, and the **step size**. ::
+Array math
+----------
 
-  >>> np.arange(2, 9, 2)
-  array([2, 4, 6, 8])
+One of the greatest advantages of arrays over built-in Python data structures
+is the ability to perform a given operation on every element of the array
+without looping. For instance, if we
 
-You can also use ``np.linspace()`` to create an array with values that are
-spaced linearly in a specified interval::
+Creating simple multi-dimensional arrays
+----------------------------------------
 
-  >>> np.linspace(0, 10, num=5)
-  array([ 0. ,  2.5,  5. ,  7.5, 10. ])
+*This section covers* `numpy.eye`, `numpy.diag`, and `numpy.reshape`.
 
-**Specifying your data type**
-
-While the default data type is floating point (``np.float64``), you can explicitly
-specify which data type you want using the ``dtype`` keyword. ::
-
-  >>> x = np.ones(2, dtype=np.int64)
-  >>> x
-  array([1, 1])
+-----
 
 :ref:`Learn more about creating arrays here <quickstart.array-creation>`
+
+
+
+
+We can also create an array from a sequence of simpler arrays.
+
+  >>> building_blocks = (two_zeros, three_ones)
+  >>> x = np.concatenate(building_blocks)
+  array([0., 0., 1., 1., 1.])
+
+.. note::
+
+  The first argument of `numpy.concatenate` must be a sequence (e.g. list
+  or tuple) of the arrays to be concatenated; the individual arrays are not
+  passed as separate arguments.
 
 Adding, removing, and sorting elements
 --------------------------------------
@@ -348,49 +368,6 @@ In order to remove elements from an array, it's simple to use indexing to select
 the elements that you want to keep.
 
 To read more about concatenate, see: `concatenate`.
-
-
-How do you know the shape and size of an array?
------------------------------------------------
-
-*This section covers* ``ndarray.ndim``, ``ndarray.size``, ``ndarray.shape``
-
------
-
-``ndarray.ndim`` will tell you the number of axes, or dimensions, of the array.
-
-``ndarray.size`` will tell you the total number of elements of the array. This
-is the *product* of the elements of the array's shape.
-
-``ndarray.shape`` will display a tuple of integers that indicate the number of
-elements stored along each dimension of the array. If, for example, you have a
-2-D array with 2 rows and 3 columns, the shape of your array is ``(2, 3)``.
-
-For example, if you create this array::
-
-  >>> array_example = np.array([[[0, 1, 2, 3],
-  ...                            [4, 5, 6, 7]],
-  ...
-  ...                           [[0, 1, 2, 3],
-  ...                            [4, 5, 6, 7]],
-  ...
-  ...                           [[0 ,1 ,2, 3],
-  ...                            [4, 5, 6, 7]]])
-
-To find the number of dimensions of the array, run::
-
-  >>> array_example.ndim
-  3
-
-To find the total number of elements in the array, run::
-
-  >>> array_example.size
-  24
-
-And to find the shape of your array, run::
-
-  >>> array_example.shape
-  (3, 2, 4)
 
 
 Can you reshape an array?
