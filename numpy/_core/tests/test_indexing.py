@@ -1312,21 +1312,21 @@ class TestBooleanIndexing:
         idx1 = np.array([[False]*9])
         assert_raises_regex(IndexError,
             "boolean index did not match indexed array along axis 0; "
-            "size of axis is 3 but size of corresponding boolean axis is 1",
+            "length of axis is 3 but length of corresponding boolean axis is 1",
             lambda: a[idx1])
 
         # This used to incorrectly give a ValueError: operands could not be broadcast together
         idx2 = np.array([[False]*8 + [True]])
         assert_raises_regex(IndexError,
             "boolean index did not match indexed array along axis 0; "
-            "size of axis is 3 but size of corresponding boolean axis is 1",
+            "length of axis is 3 but length of corresponding boolean axis is 1",
             lambda: a[idx2])
 
         # This is the same as it used to be. The above two should work like this.
         idx3 = np.array([[False]*10])
         assert_raises_regex(IndexError,
             "boolean index did not match indexed array along axis 0; "
-            "size of axis is 3 but size of corresponding boolean axis is 1",
+            "length of axis is 3 but length of corresponding boolean axis is 1",
             lambda: a[idx3])
 
         # This used to give ValueError: non-broadcastable operand
@@ -1334,7 +1334,7 @@ class TestBooleanIndexing:
         idx = np.array([[[True], [False]]])
         assert_raises_regex(IndexError,
             "boolean index did not match indexed array along axis 1; "
-            "size of axis is 1 but size of corresponding boolean axis is 2",
+            "length of axis is 1 but length of corresponding boolean axis is 2",
             lambda: a[idx])
 
 

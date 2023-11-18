@@ -5272,7 +5272,7 @@ def delete(arr, obj, axis=None):
         if (obj < -N or obj >= N):
             raise IndexError(
                 "index %i is out of bounds for axis %i with "
-                "size %i" % (obj, axis, N))
+                "length %i" % (obj, axis, N))
         if (obj < 0):
             obj += N
         newshape[axis] -= 1
@@ -5447,7 +5447,7 @@ def insert(arr, obj, values, axis=None):
         index = indices.item()
         if index < -N or index > N:
             raise IndexError(f"index {obj} is out of bounds for axis {axis} "
-                             f"with size {N}")
+                             f"with length {N}")
         if (index < 0):
             index += N
 
