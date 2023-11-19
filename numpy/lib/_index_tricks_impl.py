@@ -788,14 +788,14 @@ def _fill_diagonal_dispatcher(a, val, wrap=None):
 def fill_diagonal(a, val, wrap=False):
     """Fill the main diagonal of the given array of any dimensionality.
 
-    For an array `a` with ``a.ndim >= 2``, the diagonal is the list of
-    locations with indices ``a[i, ..., i]`` all identical. This function
-    modifies the input array in-place, it does not return a value.
+    For an array `a` with ``a.ndim >= 2``, the diagonal is the elements
+    ``a[i, ..., i]`` with indices ``i`` all identical. This function
+    modifies the input array in-place; it does not return a value.
 
     Parameters
     ----------
     a : array, at least 2-D.
-      Array whose diagonal is to be filled, it gets modified in-place.
+      Array whose diagonal is to be filled (in-place).
 
     val : scalar or array_like
       Value(s) to write on the diagonal. If `val` is scalar, the value is
