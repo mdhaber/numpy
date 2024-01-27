@@ -4449,14 +4449,16 @@ def quantile(a,
     where ``m`` is defined differently for each value of the ``method``
     parameter.
 
-    | ``method``                   | # in H&F [1]_ | ``m``         |
-    | ---------------------------- | ------------- |---------------|
-    | ``interpolated_inverted_cdf``| 4             | ``0``         |
-    | ``hazen``                    | 5             | ``1/2``       |
-    | ``weibull``                  | 6             | ``q``         |
-    | ``linear`` (default)         | 7             | ``1 - q``     |
-    | ``median_unbiased``          | 8             | ``q/3 + 1/3`` |
-    | ``normal_unbiased``          | 9             | ``q/4 + 3/8`` |
+    =============================== =============== ===============
+    ``method``                      # in H&F [1]_   ``m``
+    =============================== =============== ===============
+    ``interpolated_inverted_cdf``   4               ``0``
+    ``hazen``                       5               ``1/2``
+    ``weibull``                     6               ``q``
+    ``linear`` (default)            7               ``1 - q``
+    ``median_unbiased``             8               ``q/3 + 1/3``
+    ``normal_unbiased``             9               ``q/4 + 3/8``
+    =============================== =============== ===============
 
     Note that indices ``j`` and ``j + 1`` are clipped to the range ``0`` to
     ``n-1`` when the results of the formula would be beyond the allowed range
