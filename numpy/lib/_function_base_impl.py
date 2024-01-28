@@ -4326,8 +4326,8 @@ def quantile(a,
     +-------------------------------+---------------+---------------+
 
     Note that indices ``j`` and ``j + 1`` are clipped to the range ``0`` to
-    ``n - 1`` when the results of the formula would be outside the allowed range
-    of non-negative indices.
+    ``n - 1`` when the results of the formula would be outside the allowed
+    range of non-negative indices.
 
     The methods above are all continuous functions of probability `q`.
     Methods 1-3 of H&F [1]_ provide three discontinuous estimators, where
