@@ -28,9 +28,9 @@ from numpy.exceptions import AxisError, ComplexWarning
 from numpy.testing import (
     assert_, assert_raises, assert_warns, assert_equal, assert_almost_equal,
     assert_array_equal, assert_raises_regex, assert_array_almost_equal,
-    assert_allclose, IS_PYPY, IS_PYSTON, HAS_REFCOUNT, assert_array_less,
-    runstring, temppath, suppress_warnings, break_cycles, _SUPPORTS_SVE,
-    assert_array_compare,
+    assert_allclose, IS_PYPY, IS_WASM, IS_PYSTON, HAS_REFCOUNT,
+    assert_array_less, runstring, temppath, suppress_warnings, break_cycles,
+    _SUPPORTS_SVE, assert_array_compare,
     )
 from numpy.testing._private.utils import requires_memory, _no_tracing
 from numpy._core.tests._locales import CommaDecimalPointLocale
@@ -477,7 +477,14 @@ class TestArrayConstruction:
         e = np.array(d, copy=False)
         d[1] = 3
         assert_array_equal(e, [1, 3, 3])
-        e = np.array(d, copy=False, order='F')
+        np.array(d, copy=False, order='F')
+
+    def test_array_copy_if_needed(self):
+        d = np.array([1, 2, 3])
+        e = np.array(d, copy=None)
+        d[1] = 3
+        assert_array_equal(e, [1, 3, 3])
+        e = np.array(d, copy=None, order='F')
         d[1] = 4
         assert_array_equal(e, [1, 4, 3])
         e[2] = 7
@@ -883,7 +890,7 @@ class TestCreation:
     """
     def test_from_attribute(self):
         class x:
-            def __array__(self, dtype=None):
+            def __array__(self, dtype=None, copy=None):
                 pass
 
         assert_raises(ValueError, np.array, x())
@@ -1878,6 +1885,20 @@ class TestMethods:
         assert_equal(np.any(a, where=wh_full), False)
         assert_equal(a.any(where=False), False)
         assert_equal(np.any(a, where=False), False)
+
+    @pytest.mark.parametrize("dtype",
+            ["i8", "U10", "object", "datetime64[ms]"])
+    def test_any_and_all_result_dtype(self, dtype):
+        arr = np.ones(3, dtype=dtype)
+        assert arr.any().dtype == np.bool
+        assert arr.all().dtype == np.bool
+
+    def test_any_and_all_object_dtype(self):
+        # (seberg) Not sure we should even allow dtype here, but it is.
+        arr = np.ones(3, dtype=object)
+        # keepdims to prevent getting a scalar.
+        assert arr.any(dtype=object, keepdims=True).dtype == object
+        assert arr.all(dtype=object, keepdims=True).dtype == object
 
     def test_compress(self):
         tgt = [[5, 6, 7, 8, 9]]
@@ -3479,6 +3500,18 @@ class TestMethods:
         # isn't an ndarray
         bad_array = [1, 2, 3]
         assert_raises(TypeError, np.put, bad_array, [0, 2], 5)
+
+        # when calling np.put, make sure an 
+        # IndexError is raised if the 
+        # array is empty
+        empty_array = np.asarray(list())
+        with pytest.raises(IndexError, 
+                            match="cannot replace elements of an empty array"):
+            np.put(empty_array, 1, 1, mode="wrap")
+        with pytest.raises(IndexError, 
+                            match="cannot replace elements of an empty array"):
+            np.put(empty_array, 1, 1, mode="clip")
+        
 
     def test_ravel(self):
         a = np.array([[0, 1], [2, 3]])
@@ -6834,7 +6867,7 @@ class TestDot:
     def test_dtype_discovery_fails(self):
         # See gh-14247, error checking was missing for failed dtype discovery
         class BadObject(object):
-            def __array__(self):
+            def __array__(self, dtype=None, copy=None):
                 raise TypeError("just this tiny mint leaf")
 
         with pytest.raises(TypeError):
@@ -8311,7 +8344,8 @@ class TestArrayCreationCopyArgument(object):
             raise ValueError
 
     true_vals = [True, np._CopyMode.ALWAYS, np.True_]
-    false_vals = [False, np._CopyMode.IF_NEEDED, np.False_]
+    if_needed_vals = [None, np._CopyMode.IF_NEEDED]
+    false_vals = [False, np._CopyMode.NEVER, np.False_]
 
     def test_scalars(self):
         # Test both numpy and python scalars
@@ -8321,17 +8355,16 @@ class TestArrayCreationCopyArgument(object):
             pyscalar = arr.item(0)
 
             # Test never-copy raises error:
-            assert_raises(ValueError, np.array, scalar,
-                            copy=np._CopyMode.NEVER)
-            assert_raises(ValueError, np.array, pyscalar,
-                            copy=np._CopyMode.NEVER)
             assert_raises(ValueError, np.array, pyscalar,
                             copy=self.RaiseOnBool())
             assert_raises(ValueError, _multiarray_tests.npy_ensurenocopy,
                             [1])
-            # Casting with a dtype (to unsigned integers) can be special:
-            with pytest.raises(ValueError):
-                np.array(pyscalar, dtype=np.int64, copy=np._CopyMode.NEVER)
+            for copy in self.false_vals:
+                assert_raises(ValueError, np.array, scalar, copy=copy)
+                assert_raises(ValueError, np.array, pyscalar, copy=copy)
+                # Casting with a dtype (to unsigned integers) can be special:
+                with pytest.raises(ValueError):
+                    np.array(pyscalar, dtype=np.int64, copy=copy)
 
     def test_compatible_cast(self):
 
@@ -8356,27 +8389,23 @@ class TestArrayCreationCopyArgument(object):
 
                 if int1 == int2:
                     # Casting is not necessary, base check is sufficient here
+                    for copy in self.if_needed_vals:
+                        res = np.array(arr, copy=copy, dtype=int2)
+                        assert res is arr or res.base is arr
+
                     for copy in self.false_vals:
                         res = np.array(arr, copy=copy, dtype=int2)
                         assert res is arr or res.base is arr
 
-                    res = np.array(arr,
-                                   copy=np._CopyMode.NEVER,
-                                   dtype=int2)
-                    assert res is arr or res.base is arr
-
                 else:
                     # Casting is necessary, assert copy works:
-                    for copy in self.false_vals:
+                    for copy in self.if_needed_vals:
                         res = np.array(arr, copy=copy, dtype=int2)
                         assert res is not arr and res.flags.owndata
                         assert_array_equal(res, arr)
 
                     assert_raises(ValueError, np.array,
-                                  arr, copy=np._CopyMode.NEVER,
-                                  dtype=int2)
-                    assert_raises(ValueError, np.array,
-                                  arr, copy=None,
+                                  arr, copy=False,
                                   dtype=int2)
 
     def test_buffer_interface(self):
@@ -8397,9 +8426,9 @@ class TestArrayCreationCopyArgument(object):
         assert np.may_share_memory(arr, res)
 
     def test_array_interfaces(self):
-        # Array interface gives direct memory access (much like a memoryview)
         base_arr = np.arange(10)
 
+        # Array interface gives direct memory access (much like a memoryview)
         class ArrayLike:
             __array_interface__ = base_arr.__array_interface__
 
@@ -8415,9 +8444,7 @@ class TestArrayCreationCopyArgument(object):
         base_arr = np.arange(10)
 
         class ArrayLike:
-            def __array__(self):
-                # __array__ should return a copy, numpy cannot know this
-                # however.
+            def __array__(self, dtype=None, copy=None):
                 return base_arr
 
         arr = ArrayLike()
@@ -8425,18 +8452,109 @@ class TestArrayCreationCopyArgument(object):
         for copy in self.true_vals:
             res = np.array(arr, copy=copy)
             assert_array_equal(res, base_arr)
-            # An additional copy is currently forced by numpy in this case,
-            # you could argue, numpy does not trust the ArrayLike. This
-            # may be open for change:
-            assert res is not base_arr
+            # An additional copy is no longer forced by NumPy in this case.
+            # NumPy trusts the ArrayLike made a copy:
+            assert res is base_arr
 
-        for copy in self.false_vals:
-            res = np.array(arr, copy=False)
+        for copy in self.if_needed_vals + self.false_vals:
+            res = np.array(arr, copy=copy)
             assert_array_equal(res, base_arr)
             assert res is base_arr  # numpy trusts the ArrayLike
 
+    def test___array__copy_arg(self):
+        a = np.ones((10, 10), dtype=int)
+
+        assert np.shares_memory(a, a.__array__())
+        assert not np.shares_memory(a, a.__array__(float))
+        assert not np.shares_memory(a, a.__array__(float, copy=None))
+        assert not np.shares_memory(a, a.__array__(copy=True))
+        assert np.shares_memory(a, a.__array__(copy=None))
+        assert np.shares_memory(a, a.__array__(copy=False))
+        assert np.shares_memory(a, a.__array__(int, copy=False))
         with pytest.raises(ValueError):
-            np.array(arr, copy=np._CopyMode.NEVER)
+            np.shares_memory(a, a.__array__(float, copy=False))
+
+        base_arr = np.arange(10)
+
+        class ArrayLikeNoCopy:
+            def __array__(self, dtype=None):
+                return base_arr
+
+        a = ArrayLikeNoCopy()
+
+        # explicitly passing copy=None shouldn't raise a warning
+        arr = np.array(a, copy=None)
+        assert_array_equal(arr, base_arr)
+        assert arr is base_arr
+
+        # As of NumPy 2.1, explicitly passing copy=True does trigger passing
+        # it to __array__ (deprecation warning is triggered).
+        with pytest.warns(DeprecationWarning,
+                          match="__array__.*must implement.*'copy'"):
+            arr = np.array(a, copy=True)
+        assert_array_equal(arr, base_arr)
+        assert arr is not base_arr
+
+        # And passing copy=False gives a deprecation warning, but also raises
+        # an error:
+        with pytest.warns(DeprecationWarning, match="__array__.*'copy'"):
+            with pytest.raises(ValueError,
+                    match=r"Unable to avoid copy(.|\n)*numpy_2_0_migration_guide.html"):
+                np.array(a, copy=False)
+
+    def test___array__copy_once(self):
+        size = 100
+        base_arr = np.zeros((size, size))
+        copy_arr = np.zeros((size, size))
+
+        class ArrayRandom:
+            def __init__(self):
+                self.true_passed = False
+
+            def __array__(self, dtype=None, copy=None):
+                if copy:
+                    self.true_passed = True
+                    return copy_arr
+                else:
+                    return base_arr
+
+        arr_random = ArrayRandom()
+        first_copy = np.array(arr_random, copy=True)
+        assert arr_random.true_passed
+        assert first_copy is copy_arr
+
+        arr_random = ArrayRandom()
+        no_copy = np.array(arr_random, copy=False)
+        assert not arr_random.true_passed
+        assert no_copy is base_arr
+
+        arr_random = ArrayRandom()
+        _ = np.array([arr_random], copy=True)
+        assert not arr_random.true_passed
+
+        arr_random = ArrayRandom()
+        second_copy = np.array(arr_random, copy=True, order="F")
+        assert arr_random.true_passed
+        assert second_copy is not copy_arr
+
+    @pytest.mark.skipif(not HAS_REFCOUNT, reason="Python lacks refcounts")
+    def test__array__reference_leak(self):
+        class NotAnArray:
+            def __array__(self, dtype=None, copy=None):
+                raise NotImplementedError()
+
+        x = NotAnArray()
+
+        refcount = sys.getrefcount(x)
+
+        try:
+            np.array(x)
+        except NotImplementedError:
+            pass
+
+        gc.collect()
+
+        assert refcount == sys.getrefcount(x)
 
     @pytest.mark.parametrize(
             "arr", [np.ones(()), np.arange(81).reshape((9, 9))])
@@ -8476,26 +8594,18 @@ class TestArrayCreationCopyArgument(object):
                 assert_array_equal(arr, res)
 
             if no_copy_necessary:
-                for copy in self.false_vals:
+                for copy in self.if_needed_vals + self.false_vals:
                     res = np.array(view, copy=copy, order=order2)
                     # res.base.obj refers to the memoryview
                     if not IS_PYPY:
                         assert res is arr or res.base.obj is arr
-
-                res = np.array(view, copy=np._CopyMode.NEVER,
-                               order=order2)
-                if not IS_PYPY:
-                    assert res is arr or res.base.obj is arr
             else:
-                for copy in self.false_vals:
+                for copy in self.if_needed_vals:
                     res = np.array(arr, copy=copy, order=order2)
                     assert_array_equal(arr, res)
-                assert_raises(ValueError, np.array,
-                              view, copy=np._CopyMode.NEVER,
-                              order=order2)
-                assert_raises(ValueError, np.array,
-                              view, copy=None,
-                              order=order2)
+                for copy in self.false_vals:
+                    assert_raises(ValueError, np.array,
+                                  view, copy=copy, order=order2)
 
     def test_striding_not_ok(self):
         arr = np.array([[1, 2, 4], [3, 4, 5]])
@@ -8823,6 +8933,7 @@ class TestWhere:
             assert_equal(np.where(c[::-3], d[::-3], e[::-3]), r[::-3])
             assert_equal(np.where(c[1::-3], d[1::-3], e[1::-3]), r[1::-3])
 
+    @pytest.mark.skipif(IS_WASM, reason="no wasm fp exception support")
     def test_exotic(self):
         # object
         assert_array_equal(np.where(True, None, None), np.array(None))
@@ -9436,14 +9547,9 @@ class TestArange:
         assert_raises(TypeError, np.arange, start=4)
 
     def test_start_stop_kwarg(self):
-        with pytest.raises(TypeError):
-            # Start cannot be passed as a kwarg anymore, because on it's own
-            # it would be strange.
-            np.arange(start=0, stop=3)
-
         keyword_stop = np.arange(stop=3)
         keyword_zerotostop = np.arange(0, stop=3)
-        keyword_start_stop = np.arange(3, stop=9)
+        keyword_start_stop = np.arange(start=3, stop=9)
 
         assert len(keyword_stop) == 3
         assert len(keyword_zerotostop) == 3
@@ -9686,7 +9792,7 @@ def test_no_loop_gives_all_true_or_false(dt1, dt2):
         operator.gt])
 def test_comparisons_forwards_error(op):
     class NotArray:
-        def __array__(self):
+        def __array__(self, dtype=None, copy=None):
             raise TypeError("run you fools")
 
     with pytest.raises(TypeError, match="run you fools"):
@@ -10096,6 +10202,31 @@ def test_partition_fp(N, dtype):
             np.partition(arr, k, kind='introselect'))
     assert_arr_partitioned(np.sort(arr)[k], k,
             arr[np.argpartition(arr, k, kind='introselect')])
+
+def test_cannot_assign_data():
+    a = np.arange(10)
+    b = np.linspace(0, 1, 10)
+    with pytest.raises(AttributeError):
+        a.data = b.data
+
+def test_insufficient_width():
+    """
+    If a 'width' parameter is passed into ``binary_repr`` that is insufficient
+    to represent the number in base 2 (positive) or 2's complement (negative)
+    form, the function used to silently ignore the parameter and return a
+    representation using the minimal number of bits needed for the form in
+    question. Such behavior is now considered unsafe from a user perspective
+    and will raise an error.
+    """
+    with pytest.raises(ValueError):
+        np.binary_repr(10, width=2)
+    with pytest.raises(ValueError):
+        np.binary_repr(-5, width=2)
+
+def test_npy_char_raises():
+    from numpy._core._multiarray_tests import npy_char_deprecation
+    with pytest.raises(ValueError):
+        npy_char_deprecation()
 
 
 class TestDevice:

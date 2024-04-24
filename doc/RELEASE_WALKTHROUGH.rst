@@ -8,7 +8,7 @@ by the correct version. This should be read together with the
 Facility preparation
 ====================
 
-Before beginning to make a release, use the ``*_requirements.txt`` files to
+Before beginning to make a release, use the ``requirements/*_requirements.txt`` files to
 ensure that you have the needed software. Most software can be installed with
 pip, but some will require apt-get, dnf, or whatever your system uses for
 software. You will also need a GitHub personal access token (PAT) to push the
@@ -94,18 +94,18 @@ needed information.
 Finish the release notes
 ------------------------
 
-If this is the first release in a series the release note is generated, see
-the release note in ``doc/release/upcoming_changes/README.rst`` to see how to
-do this. Generating the release notes will also delete all the news
-fragment files in ``doc/release/upcoming_changes/``.
+If there are any release notes snippets in ``doc/release/upcoming_changes/``,
+run ``spin docs`` to build the docs, incorporate the contents of the generated
+``doc/source/release/notes-towncrier.rst`` file into the release notes file
+(e.g., ``doc/source/release/2.3.4-notes.rst``), and delete the now-processed
+snippets in ``doc/release/upcoming_changes/``. This is safe to do multiple
+times during a release cycle.
 
 The generated release note will always need some fixups, the introduction will
 need to be written, and significant changes should be called out. For patch
 releases the changelog text may also be appended, but not for the initial
 release as it is too long. Check previous release notes to see how this is
-done. Note that the ``:orphan:`` markup at the top, if present, will need
-changing to ``.. currentmodule:: numpy`` and the ``doc/source/release.rst``
-index file will need updating.
+done.
 
 
 Set the release version

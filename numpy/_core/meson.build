@@ -105,11 +105,12 @@ if use_highway
   highway_lib = static_library('highway',
     [
       # required for hwy::Abort symbol
-      'src/highway/hwy/targets.cc'
+      'src/highway/hwy/abort.cc'
     ],
     cpp_args: '-DTOOLCHAIN_MISS_ASM_HWCAP_H',
     include_directories: ['src/highway'],
-    install: false
+    install: false,
+    gnu_symbol_visibility: 'hidden',
   )
 else
   highway_lib = []
@@ -118,6 +119,11 @@ endif
 use_intel_sort = not get_option('disable-intel-sort') and cpu_family in ['x86', 'x86_64']
 if use_intel_sort and not fs.exists('src/npysort/x86-simd-sort/README.md')
   error('Missing the `x86-simd-sort` git submodule! Run `git submodule update --init` to fix this.')
+endif
+
+if not fs.exists('src/common/pythoncapi-compat')
+  error('Missing the `pythoncapi-compat` git submodule! ' +
+        'Run `git submodule update --init` to fix this.')
 endif
 
 # Check sizes of types. Note, some of these landed in config.h before, but were
@@ -344,7 +350,7 @@ max_opt = {
   'msvc': ['/O2'],
   'intel-cl': ['/O3'],
 }.get(compiler_id, ['-O3'])
-max_opt = cc.has_multi_arguments(max_opt) ? max_opt : []
+max_opt = cc.has_multi_arguments(max_opt) and get_option('buildtype') != 'debug' ? max_opt : []
 
 # Optional GCC compiler builtins and their call arguments.
 # If given, a required header and definition name (HAVE_ prepended)
@@ -488,17 +494,9 @@ endif
 if cc.has_header('sys/endian.h')
   cdata.set10('NPY_HAVE_SYS_ENDIAN_H', true)
 endif
-if is_windows
-  cdata.set10('NPY_NO_SIGNAL', true)
-endif
-# Command-line switch; distutils build checked for `NPY_NOSMP` env var instead
-# TODO: document this (search for NPY_NOSMP in C API docs)
+# Build-time option to disable threading is stored and exposed in numpyconfig.h
+# Note: SMP is an old acronym for threading (Symmetric/Shared-memory MultiProcessing)
 cdata.set10('NPY_NO_SMP', get_option('disable-threading'))
-
-# Check whether we can use inttypes (C99) formats
-if cc.has_header_symbol('inttypes.h', 'PRIdPTR')
-  cdata.set10('NPY_USE_C99_FORMATS', true)
-endif
 
 visibility_hidden = ''
 if cc.has_function_attribute('visibility:hidden') and host_machine.system() != 'cygwin'
@@ -561,6 +559,7 @@ npymath_lib = static_library('npymath',
   install_dir: np_dir / '_core/lib',
   name_prefix: name_prefix_staticlib,
   name_suffix: name_suffix_staticlib,
+  gnu_symbol_visibility: 'hidden',
 )
 
 dir_separator = '/'
@@ -646,6 +645,23 @@ src_ufunc_api = custom_target('__ufunc_api',
   install_tag: 'devel'
 )
 
+# Write out pkg-config file
+# -------------------------
+
+# Note: we can't use Meson's built-in pkgconfig module, because we have to
+# install numpy.pc within site-packages rather than in its normal location.
+cdata_numpy_pc = configuration_data()
+cdata_numpy_pc.set('version', meson.project_version())
+
+# Note: keep install path in sync with numpy/_configtool.py
+_numpy_pc = configure_file(
+  input: 'numpy.pc.in',
+  output: 'numpy.pc',
+  configuration: cdata_numpy_pc,
+  install: true,
+  install_dir: np_dir / '_core/lib/pkgconfig',
+  install_tag: 'devel'
+)
 
 # Set common build flags for C and C++ code
 # -----------------------------------------
@@ -701,6 +717,7 @@ py.extension_module('_multiarray_tests',
   gnu_symbol_visibility: 'default',
   install: true,
   subdir: 'numpy/_core',
+  install_tag: 'tests'
 )
 
 _umath_tests_mtargets = mod_features.multi_targets(
@@ -737,6 +754,7 @@ foreach gen: test_modules_src
     install: true,
     subdir: 'numpy/_core',
     link_with: gen[2],
+    install_tag: 'tests'
   )
 endforeach
 
@@ -770,6 +788,7 @@ foreach gen_mtargets : [
       'include',
       'src/common',
       'src/multiarray',
+      'src/multiarray/stringdtype',
       'src/npymath',
       'src/umath'
     ]
@@ -1065,7 +1084,7 @@ src_multiarray = multiarray_gen_headers + [
   'src/multiarray/dtype_traversal.c',
   src_file.process('src/multiarray/einsum.c.src'),
   src_file.process('src/multiarray/einsum_sumprod.c.src'),
-  'src/multiarray/experimental_public_dtype_api.c',
+  'src/multiarray/public_dtype_api.c',
   'src/multiarray/flagsobject.c',
   'src/multiarray/getset.c',
   'src/multiarray/hashdescr.c',
@@ -1084,9 +1103,13 @@ src_multiarray = multiarray_gen_headers + [
   'src/multiarray/refcount.c',
   src_file.process('src/multiarray/scalartypes.c.src'),
   'src/multiarray/sequence.c',
-  'src/multiarray/shape.c',
   'src/multiarray/scalarapi.c',
+  'src/multiarray/shape.c',
   'src/multiarray/strfuncs.c',
+  'src/multiarray/stringdtype/casts.c',
+  'src/multiarray/stringdtype/dtype.c',
+  'src/multiarray/stringdtype/utf8_utils.c',
+  'src/multiarray/stringdtype/static_string.c',
   'src/multiarray/temp_elide.c',
   'src/multiarray/usertypes.c',
   'src/multiarray/vdot.c',
@@ -1130,6 +1153,7 @@ src_umath = umath_gen_headers + [
   'src/umath/umathmodule.c',
   'src/umath/special_integer_comparisons.cpp',
   'src/umath/string_ufuncs.cpp',
+  'src/umath/stringdtype_ufuncs.cpp',
   'src/umath/wrapping_array_method.c',
   # For testing. Eventually, should use public API and be separate:
   'src/umath/_scaled_float_dtype.c',
@@ -1306,4 +1330,4 @@ py.install_sources(
 )
 
 subdir('include')
-install_subdir('tests', install_dir: np_dir / '_core', install_tag: 'python-runtime')
+install_subdir('tests', install_dir: np_dir / '_core', install_tag: 'tests')

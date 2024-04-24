@@ -5,6 +5,7 @@ import sys
 import warnings
 import numbers
 import builtins
+import math
 
 import numpy as np
 from . import multiarray
@@ -867,7 +868,7 @@ def convolve(a, v, mode='full'):
     array([2.5])
 
     """
-    a, v = array(a, copy=False, ndmin=1), array(v, copy=False, ndmin=1)
+    a, v = array(a, copy=None, ndmin=1), array(v, copy=None, ndmin=1)
     if (len(v) > len(a)):
         a, v = v, a
     if len(a) == 0:
@@ -1016,9 +1017,9 @@ def tensordot(a, b, axes=2):
     * ``axes = 1`` : tensor dot product :math:`a\\cdot b`
     * ``axes = 2`` : (default) tensor double contraction :math:`a:b`
 
-    When `axes` is integer_like, the sequence for evaluation will be: first
-    the -Nth axis in `a` and 0th axis in `b`, and the -1th axis in `a` and
-    Nth axis in `b` last.
+    When `axes` is a positive integer ``N``, the operation starts with
+    axis ``-N`` of `a` and axis ``0`` of `b`, and it continues through
+    axis ``-1`` of `a` and axis ``N-1`` of `b` (inclusive).
 
     When there is more than one axis to sum over - and they are not the last
     (first) axes of `a` (`b`) - the argument `axes` should consist of
@@ -1148,18 +1149,14 @@ def tensordot(a, b, axes=2):
     # and to the front of "b"
     notin = [k for k in range(nda) if k not in axes_a]
     newaxes_a = notin + axes_a
-    N2 = 1
-    for axis in axes_a:
-        N2 *= as_[axis]
-    newshape_a = (int(multiply.reduce([as_[ax] for ax in notin])), N2)
+    N2 = math.prod(as_[axis] for axis in axes_a)
+    newshape_a = (math.prod([as_[ax] for ax in notin]), N2)
     olda = [as_[axis] for axis in notin]
 
     notin = [k for k in range(ndb) if k not in axes_b]
     newaxes_b = axes_b + notin
-    N2 = 1
-    for axis in axes_b:
-        N2 *= bs[axis]
-    newshape_b = (N2, int(multiply.reduce([bs[ax] for ax in notin])))
+    N2 = math.prod(bs[axis] for axis in axes_b)
+    newshape_b = (N2, math.prod([bs[ax] for ax in notin]))
     oldb = [bs[axis] for axis in notin]
 
     at = a.transpose(newaxes_a).reshape(newshape_a)
@@ -2016,15 +2013,8 @@ def binary_repr(num, width=None):
         The length of the returned string if `num` is positive, or the length
         of the two's complement if `num` is negative, provided that `width` is
         at least a sufficient number of bits for `num` to be represented in
-        the designated form.
-
-        If the `width` value is insufficient, it will be ignored, and `num`
-        will be returned in binary (`num` > 0) or two's complement (`num` < 0)
-        form with its width equal to the minimum number of bits needed to
-        represent the number in the designated form. This behavior is
-        deprecated and will later raise an error.
-
-        .. deprecated:: 1.12.0
+        the designated form. If the `width` value is insufficient, an error is
+        raised.
 
     Returns
     -------
@@ -2065,12 +2055,11 @@ def binary_repr(num, width=None):
     '11101'
 
     """
-    def warn_if_insufficient(width, binwidth):
+    def err_if_insufficient(width, binwidth):
         if width is not None and width < binwidth:
-            warnings.warn(
-                "Insufficient bit width provided. This behavior "
-                "will raise an error in the future.", DeprecationWarning,
-                stacklevel=3)
+            raise ValueError(
+                f"Insufficient bit {width=} provided for {binwidth=}"
+            )
 
     # Ensure that num is a Python integer to avoid overflow or unwanted
     # casts to floating point.
@@ -2084,7 +2073,7 @@ def binary_repr(num, width=None):
         binwidth = len(binary)
         outwidth = (binwidth if width is None
                     else builtins.max(binwidth, width))
-        warn_if_insufficient(width, binwidth)
+        err_if_insufficient(width, binwidth)
         return binary.zfill(outwidth)
 
     else:
@@ -2104,7 +2093,7 @@ def binary_repr(num, width=None):
             binwidth = len(binary)
 
             outwidth = builtins.max(binwidth, width)
-            warn_if_insufficient(width, binwidth)
+            err_if_insufficient(width, binwidth)
             return '1' * (outwidth - binwidth) + binary
 
 
@@ -2153,7 +2142,7 @@ def base_repr(number, base=2, padding=0):
     elif base < 2:
         raise ValueError("Bases less than 2 not handled in base_repr.")
 
-    num = abs(number)
+    num = abs(int(number))
     res = []
     while num:
         res.append(digits[num % base])

@@ -1,11 +1,7 @@
 import os
 import shutil
-import sys
-import argparse
-import tempfile
 import pathlib
 import shutil
-import json
 import pathlib
 import importlib
 import subprocess
@@ -162,6 +158,15 @@ def docs(ctx, sphinx_target, clean, first_build, jobs):
 
     """
     meson.docs.ignore_unknown_options = True
+
+    # Run towncrier without staging anything for commit. This is the way to get
+    # release notes snippets included in a local doc build.
+    cmd = ['towncrier', 'build', '--version', '2.x.y', '--keep', '--draft']
+    p = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    outfile = curdir.parent / 'doc' / 'source' / 'release' / 'notes-towncrier.rst'
+    with open(outfile, 'w') as f:
+        f.write(p.stdout)
+
     ctx.forward(meson.docs)
 
 
@@ -304,7 +309,7 @@ def _run_asv(cmd):
         '/usr/local/lib/ccache', '/usr/local/lib/f90cache'
     ])
     env = os.environ
-    env['PATH'] = f'EXTRA_PATH:{PATH}'
+    env['PATH'] = f'{EXTRA_PATH}{os.pathsep}{PATH}'
 
     # Control BLAS/LAPACK threads
     env['OPENBLAS_NUM_THREADS'] = '1'
@@ -355,7 +360,7 @@ def lint(ctx, branch, uncommitted):
         linter = _get_numpy_tools(pathlib.Path('linter.py'))
     except ModuleNotFoundError as e:
         raise click.ClickException(
-            f"{e.msg}. Install using linter_requirements.txt"
+            f"{e.msg}. Install using requirements/linter_requirements.txt"
         )
 
     linter.DiffLinter(branch).run_lint(uncommitted)
@@ -565,7 +570,9 @@ def _config_openblas(blas_variant):
             fid.write(f"import {module_name}\n")
         os.makedirs(openblas_dir, exist_ok=True)
         with open(pkg_config_fname, "wt", encoding="utf8") as fid:
-            fid.write(openblas.get_pkg_config().replace("\\", "/"))
+            fid.write(
+                openblas.get_pkg_config(use_preloading=True)
+            )
 
 
 @click.command()
@@ -610,16 +617,10 @@ def notes(ctx, version_override):
     )
     # towncrier build --version 2.1 --yes
     cmd = ["towncrier", "build", "--version", version, "--yes"]
-    try:
-        p = util.run(
-                cmd=cmd,
-                sys_exit=False,
-                output=True,
-                encoding="utf-8"
-            )
-    except subprocess.SubprocessError as e:
+    p = util.run(cmd=cmd, sys_exit=False, output=True, encoding="utf-8")
+    if p.returncode != 0:
         raise click.ClickException(
-            f"`towncrier` failed returned {e.returncode} with error `{e.stderr}`"
+            f"`towncrier` failed returned {p.returncode} with error `{p.stderr}`"
         )
 
     output_path = project_config['tool.towncrier.filename'].format(version=version)

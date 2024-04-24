@@ -13,11 +13,12 @@
 
 #include "npy_config.h"
 
-#include "npy_pycompat.h"
+
 
 #include "multiarraymodule.h"
 #include "common.h"
 #include "dtype_transfer.h"
+#include "dtypemeta.h"
 #include "arrayobject.h"
 #include "ctors.h"
 #include "lowlevel_strided_loops.h"
@@ -336,14 +337,16 @@ PyArray_TakeFrom(PyArrayObject *self0, PyObject *indices0, int axis,
         goto fail;
     }
 
-    Py_XDECREF(indices);
-    Py_XDECREF(self);
     if (out != NULL && out != obj) {
-        Py_INCREF(out);
-        PyArray_ResolveWritebackIfCopy(obj);
+        if (PyArray_ResolveWritebackIfCopy(obj) < 0) {
+            goto fail;
+        }
         Py_DECREF(obj);
+        Py_INCREF(out);
         obj = out;
     }
+    Py_XDECREF(indices);
+    Py_XDECREF(self);
     return (PyObject *)obj;
 
  fail:
@@ -391,6 +394,11 @@ PyArray_PutTo(PyArrayObject *self, PyObject* values0, PyObject *indices0,
         goto fail;
     }
     ni = PyArray_SIZE(indices);
+    if ((ni > 0) && (PyArray_Size((PyObject *)self) == 0)) {
+        PyErr_SetString(PyExc_IndexError, 
+                        "cannot replace elements of an empty array");
+        return NULL;
+    }
     Py_INCREF(PyArray_DESCR(self));
     values = (PyArrayObject *)PyArray_FromAny(values0, PyArray_DESCR(self), 0, 0,
                               NPY_ARRAY_DEFAULT | NPY_ARRAY_FORCECAST, NULL);
@@ -418,7 +426,7 @@ PyArray_PutTo(PyArrayObject *self, PyObject* values0, PyObject *indices0,
     }
     max_item = PyArray_SIZE(self);
     dest = PyArray_DATA(self);
-    itemsize = PyArray_DESCR(self)->elsize;
+    itemsize = PyArray_ITEMSIZE(self);
 
     int has_references = PyDataType_REFCHK(PyArray_DESCR(self));
 
@@ -710,7 +718,7 @@ PyArray_PutMask(PyArrayObject *self, PyObject* values0, PyObject* mask0)
         self = obj;
     }
 
-    itemsize = PyArray_DESCR(self)->elsize;
+    itemsize = PyArray_ITEMSIZE(self);
     dest = PyArray_DATA(self);
 
     if (PyDataType_REFCHK(PyArray_DESCR(self))) {
@@ -926,7 +934,7 @@ PyArray_Repeat(PyArrayObject *aop, PyObject *op, int axis)
     old_data = PyArray_DATA(aop);
 
     nel = 1;
-    elsize = PyArray_DESCR(aop)->elsize;
+    elsize = PyArray_ITEMSIZE(aop);
     for(i = axis + 1; i < PyArray_NDIM(aop); i++) {
         nel *= PyArray_DIMS(aop)[i];
     }
@@ -1301,6 +1309,13 @@ fail:
         /* Out of memory during sorting or buffer creation */
         PyErr_NoMemory();
     }
+    // if an error happened with a dtype that doesn't hold the GIL, need
+    // to make sure we return an error value from this function.
+    // note: only the first error is ever reported, subsequent errors
+    // must *not* set the error handler.
+    if (PyErr_Occurred() && ret == 0) {
+        ret = -1;
+    }
     Py_DECREF(it);
     Py_DECREF(mem_handler);
     NPY_cast_info_xfree(&to_cast_info);
@@ -1522,10 +1537,10 @@ PyArray_Sort(PyArrayObject *op, int axis, NPY_SORTKIND which)
         return -1;
     }
 
-    sort = PyArray_DESCR(op)->f->sort[which];
+    sort = PyDataType_GetArrFuncs(PyArray_DESCR(op))->sort[which];
 
     if (sort == NULL) {
-        if (PyArray_DESCR(op)->f->compare) {
+        if (PyDataType_GetArrFuncs(PyArray_DESCR(op))->compare) {
             switch (which) {
                 default:
                 case NPY_QUICKSORT:
@@ -1641,7 +1656,7 @@ PyArray_Partition(PyArrayObject *op, PyArrayObject * ktharray, int axis,
     part = get_partition_func(PyArray_TYPE(op), which);
     if (part == NULL) {
         /* Use sorting, slower but equivalent */
-        if (PyArray_DESCR(op)->f->compare) {
+        if (PyDataType_GetArrFuncs(PyArray_DESCR(op))->compare) {
             sort = npy_quicksort;
         }
         else {
@@ -1676,10 +1691,10 @@ PyArray_ArgSort(PyArrayObject *op, int axis, NPY_SORTKIND which)
     PyArray_ArgSortFunc *argsort = NULL;
     PyObject *ret;
 
-    argsort = PyArray_DESCR(op)->f->argsort[which];
+    argsort = PyDataType_GetArrFuncs(PyArray_DESCR(op))->argsort[which];
 
     if (argsort == NULL) {
-        if (PyArray_DESCR(op)->f->compare) {
+        if (PyDataType_GetArrFuncs(PyArray_DESCR(op))->compare) {
             switch (which) {
                 default:
                 case NPY_QUICKSORT:
@@ -1737,7 +1752,7 @@ PyArray_ArgPartition(PyArrayObject *op, PyArrayObject *ktharray, int axis,
     argpart = get_argpartition_func(PyArray_TYPE(op), which);
     if (argpart == NULL) {
         /* Use sorting, slower but equivalent */
-        if (PyArray_DESCR(op)->f->compare) {
+        if (PyDataType_GetArrFuncs(PyArray_DESCR(op))->compare) {
             argsort = npy_aquicksort;
         }
         else {
@@ -1834,8 +1849,8 @@ PyArray_LexSort(PyObject *sort_keys, int axis)
                 goto fail;
             }
         }
-        if (!PyArray_DESCR(mps[i])->f->argsort[NPY_STABLESORT]
-                && !PyArray_DESCR(mps[i])->f->compare) {
+        if (!PyDataType_GetArrFuncs(PyArray_DESCR(mps[i]))->argsort[NPY_STABLESORT]
+                && !PyDataType_GetArrFuncs(PyArray_DESCR(mps[i]))->compare) {
             PyErr_Format(PyExc_TypeError,
                          "item %zd type does not have compare function", i);
             goto fail;
@@ -1901,15 +1916,15 @@ PyArray_LexSort(PyObject *sort_keys, int axis)
     size = rit->size;
     N = PyArray_DIMS(mps[0])[axis];
     rstride = PyArray_STRIDE(ret, axis);
-    maxelsize = PyArray_DESCR(mps[0])->elsize;
+    maxelsize = PyArray_ITEMSIZE(mps[0]);
     needcopy = (rstride != sizeof(npy_intp));
     for (j = 0; j < n; j++) {
         needcopy = needcopy
             || PyArray_ISBYTESWAPPED(mps[j])
             || !(PyArray_FLAGS(mps[j]) & NPY_ARRAY_ALIGNED)
-            || (PyArray_STRIDES(mps[j])[axis] != (npy_intp)PyArray_DESCR(mps[j])->elsize);
-        if (PyArray_DESCR(mps[j])->elsize > maxelsize) {
-            maxelsize = PyArray_DESCR(mps[j])->elsize;
+            || (PyArray_STRIDES(mps[j])[axis] != (npy_intp)PyArray_ITEMSIZE(mps[j]));
+        if (PyArray_ITEMSIZE(mps[j]) > maxelsize) {
+            maxelsize = PyArray_ITEMSIZE(mps[j]);
         }
     }
 
@@ -1949,9 +1964,9 @@ PyArray_LexSort(PyObject *sort_keys, int axis)
             }
             for (j = 0; j < n; j++) {
                 int rcode;
-                elsize = PyArray_DESCR(mps[j])->elsize;
+                elsize = PyArray_ITEMSIZE(mps[j]);
                 astride = PyArray_STRIDES(mps[j])[axis];
-                argsort = PyArray_DESCR(mps[j])->f->argsort[NPY_STABLESORT];
+                argsort = PyDataType_GetArrFuncs(PyArray_DESCR(mps[j]))->argsort[NPY_STABLESORT];
                 if(argsort == NULL) {
                     argsort = npy_atimsort;
                 }
@@ -1986,7 +2001,7 @@ PyArray_LexSort(PyObject *sort_keys, int axis)
             }
             for (j = 0; j < n; j++) {
                 int rcode;
-                argsort = PyArray_DESCR(mps[j])->f->argsort[NPY_STABLESORT];
+                argsort = PyDataType_GetArrFuncs(PyArray_DESCR(mps[j]))->argsort[NPY_STABLESORT];
                 if(argsort == NULL) {
                     argsort = npy_atimsort;
                 }
@@ -2177,7 +2192,7 @@ PyArray_SearchSorted(PyArrayObject *op1, PyObject *op2,
                   (const char *)PyArray_DATA(ap2),
                   (char *)PyArray_DATA(ret),
                   PyArray_SIZE(ap1), PyArray_SIZE(ap2),
-                  PyArray_STRIDES(ap1)[0], PyArray_DESCR(ap2)->elsize,
+                  PyArray_STRIDES(ap1)[0], PyArray_ITEMSIZE(ap2),
                   NPY_SIZEOF_INTP, ap2);
         NPY_END_THREADS_DESCR(PyArray_DESCR(ap2));
     }
@@ -2191,7 +2206,7 @@ PyArray_SearchSorted(PyArrayObject *op1, PyObject *op2,
                              (char *)PyArray_DATA(ret),
                              PyArray_SIZE(ap1), PyArray_SIZE(ap2),
                              PyArray_STRIDES(ap1)[0],
-                             PyArray_DESCR(ap2)->elsize,
+                             PyArray_ITEMSIZE(ap2),
                              PyArray_STRIDES(sorter)[0], NPY_SIZEOF_INTP, ap2);
         NPY_END_THREADS_DESCR(PyArray_DESCR(ap2));
         if (error < 0) {
@@ -2681,7 +2696,7 @@ PyArray_CountNonzero(PyArrayObject *self)
         );
     }
 
-    nonzero = PyArray_DESCR(self)->f->nonzero;
+    nonzero = PyDataType_GetArrFuncs(PyArray_DESCR(self))->nonzero;
     /* If it's a trivial one-dimensional loop, don't use an iterator */
     if (PyArray_TRIVIALLY_ITERABLE(self)) {
         needs_api = PyDataType_FLAGCHK(dtype, NPY_NEEDS_PYAPI);
@@ -2782,6 +2797,23 @@ NPY_NO_EXPORT PyObject *
 PyArray_Nonzero(PyArrayObject *self)
 {
     int i, ndim = PyArray_NDIM(self);
+    if (ndim == 0) {
+        char const* msg;
+        if (PyArray_ISBOOL(self)) {
+            msg =
+                "Calling nonzero on 0d arrays is not allowed. "
+                "Use np.atleast_1d(scalar).nonzero() instead. "
+                "If the context of this error is of the form "
+                "`arr[nonzero(cond)]`, just use `arr[cond]`.";
+        } else {
+            msg =
+                "Calling nonzero on 0d arrays is not allowed. "
+                "Use np.atleast_1d(scalar).nonzero() instead.";
+        }
+        PyErr_SetString(PyExc_ValueError, msg);
+        return NULL;
+    }
+
     PyArrayObject *ret = NULL;
     PyObject *ret_tuple;
     npy_intp ret_dims[2];
@@ -2800,44 +2832,8 @@ PyArray_Nonzero(PyArrayObject *self)
     char **dataptr;
 
     dtype = PyArray_DESCR(self);
-    nonzero = dtype->f->nonzero;
+    nonzero = PyDataType_GetArrFuncs(dtype)->nonzero;
     needs_api = PyDataType_FLAGCHK(dtype, NPY_NEEDS_PYAPI);
-
-    /* Special case - nonzero(zero_d) is nonzero(atleast_1d(zero_d)) */
-    if (ndim == 0) {
-        char const* msg;
-        if (PyArray_ISBOOL(self)) {
-            msg =
-                "Calling nonzero on 0d arrays is deprecated, as it behaves "
-                "surprisingly. Use `atleast_1d(cond).nonzero()` if the old "
-                "behavior was intended. If the context of this warning is of "
-                "the form `arr[nonzero(cond)]`, just use `arr[cond]`.";
-        }
-        else {
-            msg =
-                "Calling nonzero on 0d arrays is deprecated, as it behaves "
-                "surprisingly. Use `atleast_1d(arr).nonzero()` if the old "
-                "behavior was intended.";
-        }
-        if (DEPRECATE(msg) < 0) {
-            return NULL;
-        }
-
-        static npy_intp const zero_dim_shape[1] = {1};
-        static npy_intp const zero_dim_strides[1] = {0};
-
-        Py_INCREF(PyArray_DESCR(self));  /* array creation steals reference */
-        PyArrayObject *self_1d = (PyArrayObject *)PyArray_NewFromDescrAndBase(
-            Py_TYPE(self), PyArray_DESCR(self),
-            1, zero_dim_shape, zero_dim_strides, PyArray_BYTES(self),
-            PyArray_FLAGS(self), (PyObject *)self, (PyObject *)self);
-        if (self_1d == NULL) {
-            return NULL;
-        }
-        ret_tuple = PyArray_Nonzero(self_1d);
-        Py_DECREF(self_1d);
-        return ret_tuple;
-    }
 
     /*
      * First count the number of non-zeros in 'self'.

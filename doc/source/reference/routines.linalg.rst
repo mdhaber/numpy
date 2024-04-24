@@ -57,6 +57,7 @@ Matrix and vector products
    linalg.multi_dot
    vdot
    vecdot
+   linalg.vecdot
    inner
    outer
    matmul
@@ -119,6 +120,8 @@ Solving equations and inverting matrices
 
 Other matrix operations
 -----------------------
+.. autosummary::
+   :toctree: generated/
 
    diagonal
    linalg.diagonal (Array API compatible)

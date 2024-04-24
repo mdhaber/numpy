@@ -226,6 +226,7 @@ python_sources = [
   '__init__.pxd',
   '__init__.py',
   '__init__.pyi',
+  '_configtool.py',
   '_distributor_init.py',
   '_globals.py',
   '_pytesttester.py',
@@ -264,7 +265,6 @@ pure_subdirs = [
   '_pyinstaller',
   '_typing',
   '_utils',
-  'array_api',
   'compat',
   'doc',
   'f2py',
@@ -273,7 +273,6 @@ pure_subdirs = [
   'matrixlib',
   'polynomial',
   'testing',
-  'tests',
   'typing',
   'rec',
   'char',
@@ -312,8 +311,13 @@ else
 endif
 
 foreach subdir: pure_subdirs
-  install_subdir(subdir, install_dir: np_dir, install_tag: 'python-runtime')
+  install_subdir(subdir, install_dir: np_dir, install_tag: 'python-runtime', exclude_directories: ['tests'])
+  if fs.is_dir(subdir/'tests')
+    install_subdir(subdir/'tests', install_dir: np_dir/subdir, install_tag: 'tests')
+  endif
 endforeach
+
+install_subdir('tests', install_dir: np_dir, install_tag: 'tests')
 
 compilers = {
   'C': cc,

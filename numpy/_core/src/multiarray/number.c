@@ -17,7 +17,6 @@
 #include "binop_override.h"
 #include "ufunc_override.h"
 #include "abstractdtypes.h"
-#include "common_dtype.h"
 #include "convert_datatype.h"
 
 /*************************************************************************
@@ -61,24 +60,25 @@ array_inplace_matrix_multiply(PyArrayObject *m1, PyObject *m2);
  * Those not present will not be changed
  */
 
-/* FIXME - macro contains a return */
-#define SET(op)   temp = _PyDict_GetItemStringWithError(dict, #op); \
-    if (temp == NULL && PyErr_Occurred()) { \
+/* FIXME - macro contains returns  */
+#define SET(op) \
+    res = PyDict_GetItemStringRef(dict, #op, &temp); \
+    if (res == -1) { \
         return -1; \
     } \
-    else if (temp != NULL) { \
+    else if (res == 1) { \
         if (!(PyCallable_Check(temp))) { \
+            Py_DECREF(temp); \
             return -1; \
         } \
-        Py_INCREF(temp); \
-        Py_XDECREF(n_ops.op); \
-        n_ops.op = temp; \
+        Py_XSETREF(n_ops.op, temp); \
     }
 
 NPY_NO_EXPORT int
 _PyArray_SetNumericOps(PyObject *dict)
 {
     PyObject *temp = NULL;
+    int res;
     SET(add);
     SET(subtract);
     SET(multiply);
@@ -750,7 +750,7 @@ _array_nonzero(PyArrayObject *mp)
         if (Py_EnterRecursiveCall(" while converting array to bool")) {
             return -1;
         }
-        res = PyArray_DESCR(mp)->f->nonzero(PyArray_DATA(mp), mp);
+        res = PyDataType_GetArrFuncs(PyArray_DESCR(mp))->nonzero(PyArray_DATA(mp), mp);
         /* nonzero has no way to indicate an error, but one can occur */
         if (PyErr_Occurred()) {
             res = -1;

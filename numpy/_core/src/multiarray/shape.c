@@ -12,7 +12,7 @@
 
 #include "npy_config.h"
 
-#include "npy_pycompat.h"
+
 
 #include "arraywrap.h"
 #include "ctors.h"
@@ -78,7 +78,7 @@ PyArray_Resize(PyArrayObject *self, PyArray_Dims *newshape, int refcheck,
     }
 
     /* Convert to number of bytes. The new count might overflow */
-    elsize = PyArray_DESCR(self)->elsize;
+    elsize = PyArray_ITEMSIZE(self);
     oldnbytes = oldsize * elsize;
     if (npy_mul_sizes_with_overflow(&newnbytes, newsize, elsize)) {
         return PyErr_NoMemory();
@@ -174,7 +174,7 @@ PyArray_Resize(PyArrayObject *self, PyArray_Dims *newshape, int refcheck,
         }
         /* make new_strides variable */
         _array_fill_strides(new_strides, new_dimensions, new_nd,
-                            PyArray_DESCR(self)->elsize, PyArray_FLAGS(self),
+                            PyArray_ITEMSIZE(self), PyArray_FLAGS(self),
                             &(((PyArrayObject_fields *)self)->flags));
         memmove(PyArray_DIMS(self), new_dimensions, new_nd*sizeof(npy_intp));
         memmove(PyArray_STRIDES(self), new_strides, new_nd*sizeof(npy_intp));
@@ -324,7 +324,7 @@ _putzero(char *optr, PyObject *zero, PyArray_Descr *dtype)
         PyArray_Descr *new;
         int offset;
         Py_ssize_t pos = 0;
-        while (PyDict_Next(dtype->fields, &pos, &key, &value)) {
+        while (PyDict_Next(PyDataType_FIELDS(dtype), &pos, &key, &value)) {
             if (NPY_TITLE_KEY(key, value)) {
                 continue;
             }

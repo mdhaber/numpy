@@ -63,7 +63,7 @@ dependencies with::
 
     $ virtualenv numpy-dev
     $ source numpy-dev/bin/activate # activate virtual environment
-    $ python -m pip install -r all_requirements.txt
+    $ python -m pip install -r requirements/all_requirements.txt
 
 Now, whenever you want to switch to the virtual environment, you can use the
 command ``source numpy-dev/bin/activate``, and ``deactivate`` to exit from the
@@ -81,7 +81,7 @@ Testing builds
 
 Before running the tests, first install the test dependencies::
 
-    $ python -m pip install -r test_requirements.txt
+    $ python -m pip install -r requirements/test_requirements.txt
     $ python -m pip install asv # only for running benchmarks
 
 To build the development version of NumPy and run tests, spawn
@@ -182,7 +182,7 @@ Lint checks can be performed on newly added lines of Python code.
 
 Install all dependent packages using pip::
 
-    $ python -m pip install -r linter_requirements.txt
+    $ python -m pip install -r requirements/linter_requirements.txt
 
 To run lint checks before committing new code, run::
 
@@ -247,7 +247,10 @@ of Python is encouraged, see :ref:`advanced_debugging`.
 
 In terms of debugging, NumPy also needs to be built in a debug mode. You need to use
 ``debug`` build type and disable optimizations to make sure ``-O0`` flag is used
-during object building. To generate source-level debug information within the build process run::
+during object building. Note that NumPy should NOT be installed in your environment
+before you build with the ``spin build`` command.
+
+To generate source-level debug information within the build process run::
 
     $ spin build --clean -- -Dbuildtype=debug -Ddisable-optimization=true
 
@@ -271,13 +274,14 @@ you want to debug. For instance ``mytest.py``::
     x = np.arange(5)
     np.empty_like(x)
 
-Now, you can run::
+Note that your test file needs to be outside the NumPy clone you have. Now, you can
+run::
 
-    $ spin gdb mytest.py
+    $ spin gdb /path/to/mytest.py
 
 In case you are using clang toolchain::
 
-    $ lldb python mytest.py
+    $ spin lldb /path/to/mytest.py
 
 And then in the debugger::
 

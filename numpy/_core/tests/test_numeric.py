@@ -116,12 +116,6 @@ class TestNonarrayArgs:
         out = np.count_nonzero(arr, axis=1)
         assert_equal(out, tgt)
 
-    def test_cumproduct(self):
-        A = [[1, 2, 3], [4, 5, 6]]
-        with assert_warns(DeprecationWarning):
-            expected = np.array([1, 2, 6, 24, 120, 720])
-            assert_(np.all(np.cumproduct(A) == expected))
-
     def test_diagonal(self):
         a = [[0, 1, 2, 3],
              [4, 5, 6, 7],
@@ -195,7 +189,7 @@ class TestNonarrayArgs:
 
     @pytest.mark.parametrize('val, ndigits', [
         pytest.param(2**31 - 1, -1,
-            marks=pytest.mark.xfail(reason="Out of range of int32")
+            marks=pytest.mark.skip(reason="Out of range of int32")
         ),
         (2**31 - 1, 1-math.ceil(math.log10(2**31 - 1))),
         (2**31 - 1, -math.ceil(math.log10(2**31 - 1)))
@@ -804,7 +798,7 @@ class TestBoolCmp:
         # Propagation of the RISC-V Unprivileged ISA for more details.
         # We disable the float32 sign test on riscv64 for -np.nan as the sign
         # of the NaN will be lost when it's converted to a float32.
-        if platform.processor() != 'riscv64':
+        if platform.machine() != 'riscv64':
             self.signf[3::6][self.ef[3::6]] = -np.nan
         self.signd[3::6][self.ed[3::6]] = -np.nan
         self.signf[4::6][self.ef[4::6]] = -0.
@@ -1573,16 +1567,12 @@ class TestNonzero:
         assert_equal(np.count_nonzero(np.array([1], dtype='?')), 1)
         assert_equal(np.nonzero(np.array([1])), ([0],))
 
-    def test_nonzero_zerod(self):
-        assert_equal(np.count_nonzero(np.array(0)), 0)
-        assert_equal(np.count_nonzero(np.array(0, dtype='?')), 0)
-        with assert_warns(DeprecationWarning):
-            assert_equal(np.nonzero(np.array(0)), ([],))
-
-        assert_equal(np.count_nonzero(np.array(1)), 1)
-        assert_equal(np.count_nonzero(np.array(1, dtype='?')), 1)
-        with assert_warns(DeprecationWarning):
-            assert_equal(np.nonzero(np.array(1)), ([0],))
+    def test_nonzero_zerodim(self):
+        err_msg = "Calling nonzero on 0d arrays is not allowed"
+        with assert_raises_regex(ValueError, err_msg):
+            np.nonzero(np.array(0))
+        with assert_raises_regex(ValueError, err_msg):
+            np.array(1).nonzero()
 
     def test_nonzero_onedim(self):
         x = np.array([1, 0, 2, -1, 0, 0, 8])
@@ -1975,6 +1965,9 @@ class TestBaseRepr:
         with assert_raises(ValueError):
             np.base_repr(1, 37)
 
+    def test_minimal_signed_int(self):
+        assert_equal(np.base_repr(np.int8(-128)), '-10000000')
+
 
 def _test_array_equal_parametrizations():
     """
@@ -2113,7 +2106,7 @@ class TestArrayComparisons:
 
         - are the two inputs the same object or not (same object many not
           be equal if contains NaNs)
-        - Wether we should consider or not, NaNs, being equal.
+        - Whether we should consider or not, NaNs, being equal.
 
         """
         if equal_nan is None:
@@ -3348,6 +3341,11 @@ class TestLikeFuncs:
 
         b = like_function(a, subok=False, **fill_kwarg)
         assert_(type(b) is not MyNDArray)
+
+        # Test invalid dtype
+        with assert_raises(TypeError):
+            a = np.array(b"abc")
+            like_function(a, dtype="S-1", **fill_kwarg)
 
     def test_ones_like(self):
         self.check_like_function(np.ones_like, 1)

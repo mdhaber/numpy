@@ -13,8 +13,6 @@
 #include "numpy/ufuncobject.h"
 #include "numpy/npy_math.h"
 
-#include "npy_pycompat.h"
-
 #include "npy_config.h"
 
 #include "npy_cblas.h"
@@ -983,36 +981,6 @@ identity_matrix(typ *matrix, size_t n)
     }
 }
 
-         /* zero the undefined part in a upper/lower triangular matrix */
-          /* Note: matrix from fortran routine, so column-major order */
-
-template<typename typ>
-static inline void
-triu_matrix(typ *matrix, size_t n)
-{
-    size_t i, j;
-    for (i = 0; i < n-1; ++i) {
-        for (j = i+1; j < n; ++j) {
-            matrix[j] = numeric_limits<typ>::zero;
-        }
-        matrix += n;
-    }
-}
-
-template<typename typ>
-static inline void
-tril_matrix(typ *matrix, size_t n)
-{
-    size_t i, j;
-    matrix += n;
-    for (i = 1; i < n; ++i) {
-        for (j = 0; j < i; ++j) {
-            matrix[j] = numeric_limits<typ>::zero;
-        }
-        matrix += n;
-    }
-}
-
 /* -------------------------------------------------------------------------- */
                           /* Determinants */
 
@@ -1884,6 +1852,40 @@ struct POTR_PARAMS_t
 };
 
 
+         /* zero the undefined part in a upper/lower triangular matrix */
+          /* Note: matrix from fortran routine, so column-major order */
+
+template<typename typ>
+static inline void
+zero_lower_triangle(POTR_PARAMS_t<typ> *params)
+{
+    fortran_int n = params->N;
+    typ *matrix = params->A;
+    fortran_int i, j;
+    for (i = 0; i < n-1; ++i) {
+        for (j = i+1; j < n; ++j) {
+            matrix[j] = numeric_limits<typ>::zero;
+        }
+        matrix += n;
+    }
+}
+
+template<typename typ>
+static inline void
+zero_upper_triangle(POTR_PARAMS_t<typ> *params)
+{
+    fortran_int n = params->N;
+    typ *matrix = params->A;
+    fortran_int i, j;
+    matrix += n;
+    for (i = 1; i < n; ++i) {
+        for (j = 0; j < i; ++j) {
+            matrix[j] = numeric_limits<typ>::zero;
+        }
+        matrix += n;
+    }
+}
+
 static inline fortran_int
 call_potrf(POTR_PARAMS_t<fortran_real> *params)
 {
@@ -1983,10 +1985,10 @@ cholesky(char uplo, char **args, npy_intp const *dimensions, npy_intp const *ste
             not_ok = call_potrf(&params);
             if (!not_ok) {
                 if (uplo == 'L') {
-                    tril_matrix(params.A, params.N);
+                    zero_upper_triangle(&params);
                 }
                 else {
-                    triu_matrix(params.A, params.N);
+                    zero_lower_triangle(&params);
                 }
                 delinearize_matrix((ftyp*)args[1], params.A, &r_out);
             } else {
@@ -4213,14 +4215,14 @@ GUFUNC_FUNC_ARRAY_REAL_COMPLEX__(lstsq);
 GUFUNC_FUNC_ARRAY_EIG(eig);
 GUFUNC_FUNC_ARRAY_EIG(eigvals);
 
-static char equal_2_types[] = {
+static const char equal_2_types[] = {
     NPY_FLOAT, NPY_FLOAT,
     NPY_DOUBLE, NPY_DOUBLE,
     NPY_CFLOAT, NPY_CFLOAT,
     NPY_CDOUBLE, NPY_CDOUBLE
 };
 
-static char equal_3_types[] = {
+static const char equal_3_types[] = {
     NPY_FLOAT, NPY_FLOAT, NPY_FLOAT,
     NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE,
     NPY_CFLOAT, NPY_CFLOAT, NPY_CFLOAT,
@@ -4228,47 +4230,47 @@ static char equal_3_types[] = {
 };
 
 /* second result is logdet, that will always be a REAL */
-static char slogdet_types[] = {
+static const char slogdet_types[] = {
     NPY_FLOAT, NPY_FLOAT, NPY_FLOAT,
     NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE,
     NPY_CFLOAT, NPY_CFLOAT, NPY_FLOAT,
     NPY_CDOUBLE, NPY_CDOUBLE, NPY_DOUBLE
 };
 
-static char eigh_types[] = {
+static const char eigh_types[] = {
     NPY_FLOAT, NPY_FLOAT, NPY_FLOAT,
     NPY_DOUBLE, NPY_DOUBLE, NPY_DOUBLE,
     NPY_CFLOAT, NPY_FLOAT, NPY_CFLOAT,
     NPY_CDOUBLE, NPY_DOUBLE, NPY_CDOUBLE
 };
 
-static char eighvals_types[] = {
+static const char eighvals_types[] = {
     NPY_FLOAT, NPY_FLOAT,
     NPY_DOUBLE, NPY_DOUBLE,
     NPY_CFLOAT, NPY_FLOAT,
     NPY_CDOUBLE, NPY_DOUBLE
 };
 
-static char eig_types[] = {
+static const char eig_types[] = {
     NPY_FLOAT, NPY_CFLOAT, NPY_CFLOAT,
     NPY_DOUBLE, NPY_CDOUBLE, NPY_CDOUBLE,
     NPY_CDOUBLE, NPY_CDOUBLE, NPY_CDOUBLE
 };
 
-static char eigvals_types[] = {
+static const char eigvals_types[] = {
     NPY_FLOAT, NPY_CFLOAT,
     NPY_DOUBLE, NPY_CDOUBLE,
     NPY_CDOUBLE, NPY_CDOUBLE
 };
 
-static char svd_1_1_types[] = {
+static const char svd_1_1_types[] = {
     NPY_FLOAT, NPY_FLOAT,
     NPY_DOUBLE, NPY_DOUBLE,
     NPY_CFLOAT, NPY_FLOAT,
     NPY_CDOUBLE, NPY_DOUBLE
 };
 
-static char svd_1_3_types[] = {
+static const char svd_1_3_types[] = {
     NPY_FLOAT,   NPY_FLOAT,   NPY_FLOAT,  NPY_FLOAT,
     NPY_DOUBLE,  NPY_DOUBLE,  NPY_DOUBLE, NPY_DOUBLE,
     NPY_CFLOAT,  NPY_CFLOAT,  NPY_FLOAT,  NPY_CFLOAT,
@@ -4276,25 +4278,25 @@ static char svd_1_3_types[] = {
 };
 
 /* A, tau */
-static char qr_r_raw_types[] = {
+static const char qr_r_raw_types[] = {
     NPY_DOUBLE,  NPY_DOUBLE,
     NPY_CDOUBLE, NPY_CDOUBLE,
 };
 
 /* A, tau, q */
-static char qr_reduced_types[] = {
+static const char qr_reduced_types[] = {
     NPY_DOUBLE,  NPY_DOUBLE,  NPY_DOUBLE,
     NPY_CDOUBLE, NPY_CDOUBLE, NPY_CDOUBLE,
 };
 
 /* A, tau, q */
-static char qr_complete_types[] = {
+static const char qr_complete_types[] = {
     NPY_DOUBLE,  NPY_DOUBLE,  NPY_DOUBLE,
     NPY_CDOUBLE, NPY_CDOUBLE, NPY_CDOUBLE,
 };
 
 /*  A,           b,           rcond,      x,           resid,      rank,    s,        */
-static char lstsq_types[] = {
+static const char lstsq_types[] = {
     NPY_FLOAT,   NPY_FLOAT,   NPY_FLOAT,  NPY_FLOAT,   NPY_FLOAT,  NPY_INT, NPY_FLOAT,
     NPY_DOUBLE,  NPY_DOUBLE,  NPY_DOUBLE, NPY_DOUBLE,  NPY_DOUBLE, NPY_INT, NPY_DOUBLE,
     NPY_CFLOAT,  NPY_CFLOAT,  NPY_FLOAT,  NPY_CFLOAT,  NPY_FLOAT,  NPY_INT, NPY_FLOAT,
@@ -4309,7 +4311,7 @@ typedef struct gufunc_descriptor_struct {
     int nin;
     int nout;
     PyUFuncGenericFunction *funcs;
-    char *types;
+    const char *types;
 } GUFUNC_DESCRIPTOR_t;
 
 GUFUNC_DESCRIPTOR_t gufunc_descriptors [] = {

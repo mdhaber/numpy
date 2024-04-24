@@ -327,13 +327,15 @@ def solve(a, b):
     ----------
     a : (..., M, M) array_like
         Coefficient matrix.
-    b : {(..., M,), (..., M, K)}, array_like
+    b : {(M,), (..., M, K)}, array_like
         Ordinate or "dependent variable" values.
 
     Returns
     -------
     x : {(..., M,), (..., M, K)} ndarray
-        Solution to the system a x = b.  Returned shape is identical to `b`.
+        Solution to the system a x = b.  Returned shape is (..., M) if b is
+        shape (M,) and (..., M, K) if b is (..., M, K), where the "..." part is
+        broadcasted between a and b.
 
     Raises
     ------
@@ -358,6 +360,13 @@ def solve(a, b):
     columns) must be linearly independent; if either is not true, use
     `lstsq` for the least-squares best "solution" of the
     system/equation.
+
+    .. versionchanged:: 2.0
+
+       The b array is only treated as a shape (M,) column vector if it is
+       exactly 1-dimensional. In all other instances it is treated as a stack
+       of (M, K) matrices. Previously b would be treated as a stack of (M,)
+       vectors if b.ndim was equal to a.ndim - 1.
 
     References
     ----------
@@ -390,7 +399,7 @@ def solve(a, b):
 
     # We use the b = (..., M,) logic, only if the number of extra dimensions
     # match exactly
-    if b.ndim == a.ndim - 1:
+    if b.ndim == 1:
         gufunc = _umath_linalg.solve1
     else:
         gufunc = _umath_linalg.solve
@@ -520,7 +529,7 @@ def inv(a):
 
     If `a` is detected to be singular, a `LinAlgError` is raised. If `a` is
     ill-conditioned, a `LinAlgError` may or may not be raised, and results may
-    be innacurate due to floating-point errors.
+    be inaccurate due to floating-point errors.
 
     References
     ----------
@@ -2068,18 +2077,23 @@ def matrix_rank(A, tol=None, hermitian=False, *, rtol=None):
     >>> matrix_rank(np.zeros((4,)))
     0
     """
+    if rtol is not None and tol is not None:
+        raise ValueError("`tol` and `rtol` can't be both set.")
+
     A = asarray(A)
     if A.ndim < 2:
         return int(not all(A == 0))
     S = svd(A, compute_uv=False, hermitian=hermitian)
-    if rtol is not None and tol is not None:
-        raise ValueError("`tol` and `rtol` can't be both set.")
-    if rtol is None:
-        rtol = max(A.shape[-2:]) * finfo(S.dtype).eps
+
     if tol is None:
+        if rtol is None:
+            rtol = max(A.shape[-2:]) * finfo(S.dtype).eps
+        else:
+            rtol = asarray(rtol)[..., newaxis]
         tol = S.max(axis=-1, keepdims=True) * rtol
     else:
         tol = asarray(tol)[..., newaxis]
+
     return count_nonzero(S > tol, axis=-1)
 
 
@@ -2366,7 +2380,7 @@ def _lstsq_dispatcher(a, b, rcond=None):
 
 
 @array_function_dispatch(_lstsq_dispatcher)
-def lstsq(a, b, rcond="warn"):
+def lstsq(a, b, rcond=None):
     r"""
     Return the least-squares solution to a linear matrix equation.
 
@@ -2392,13 +2406,12 @@ def lstsq(a, b, rcond="warn"):
         For the purposes of rank determination, singular values are treated
         as zero if they are smaller than `rcond` times the largest singular
         value of `a`.
+        The default uses the machine precision times ``max(M, N)``.  Passing
+        ``-1`` will use machine precision.
 
-        .. versionchanged:: 1.14.0
-           If not set, a FutureWarning is given. The previous default
-           of ``-1`` will use the machine precision as `rcond` parameter,
-           the new default will use the machine precision times `max(M, N)`.
-           To silence the warning and use the new default, use ``rcond=None``,
-           to keep using the old behavior, use ``rcond=-1``.
+        .. versionchanged:: 2.0
+            Previously, the default was ``-1``, but a warning was given that
+            this would change.
 
     Returns
     -------
@@ -2449,7 +2462,7 @@ def lstsq(a, b, rcond="warn"):
            [ 2.,  1.],
            [ 3.,  1.]])
 
-    >>> m, c = np.linalg.lstsq(A, y, rcond=None)[0]
+    >>> m, c = np.linalg.lstsq(A, y)[0]
     >>> m, c
     (1.0 -0.95) # may vary
 
@@ -2476,17 +2489,6 @@ def lstsq(a, b, rcond="warn"):
     t, result_t = _commonType(a, b)
     result_real_t = _realType(result_t)
 
-    # Determine default rcond value
-    if rcond == "warn":
-        # 2017-08-19, 1.14.0
-        warnings.warn("`rcond` parameter will change to the default of "
-                      "machine precision times ``max(M, N)`` where M and N "
-                      "are the input matrix dimensions.\n"
-                      "To use the future default and silence this warning "
-                      "we advise to pass `rcond=None`, to keep using the old, "
-                      "explicitly pass `rcond=-1`.",
-                      FutureWarning, stacklevel=2)
-        rcond = -1
     if rcond is None:
         rcond = finfo(t).eps * max(n, m)
 

@@ -96,6 +96,11 @@ class TestBuiltin:
             assert_raises(TypeError, np.dtype, 'q8')
             assert_raises(TypeError, np.dtype, 'Q8')
 
+        # Make sure negative-sized dtype raises an error
+        assert_raises(TypeError, np.dtype, 'S-1')
+        assert_raises(TypeError, np.dtype, 'U-1')
+        assert_raises(TypeError, np.dtype, 'V-1')
+
     def test_richcompare_invalid_dtype_equality(self):
         # Make sure objects that cannot be converted to valid
         # dtypes results in False/True when compared to valid dtypes.
@@ -161,7 +166,7 @@ class TestBuiltin:
         # Byte order indicator, but no type
         assert_raises(TypeError, np.dtype, b'|')
 
-        # Single character with ordinal < NPY_NTYPES returns
+        # Single character with ordinal < NPY_NTYPES_LEGACY returns
         # type by index into _builtin_descrs
         assert_dtype_equal(np.dtype(bytes([0])), np.dtype('bool'))
         assert_dtype_equal(np.dtype(bytes([17])), np.dtype(object))
@@ -633,10 +638,8 @@ class TestSubarray:
     def test_shape_equal(self):
         """Test some data types that are equal"""
         assert_dtype_equal(np.dtype('f8'), np.dtype(('f8', tuple())))
-        # FutureWarning during deprecation period; after it is passed this
-        # should instead check that "(1)f8" == "1f8" == ("f8", 1).
-        with pytest.warns(FutureWarning):
-            assert_dtype_equal(np.dtype('f8'), np.dtype(('f8', 1)))
+        assert_dtype_equal(np.dtype('(1,)f8'), np.dtype(('f8', 1)))
+        assert np.dtype(('f8', 1)).shape == (1,)
         assert_dtype_equal(np.dtype((int, 2)), np.dtype((int, (2,))))
         assert_dtype_equal(np.dtype(('<f4', (3, 2))), np.dtype(('<f4', (3, 2))))
         d = ([('a', 'f4', (1, 2)), ('b', 'f8', (3, 1))], (3, 2))
@@ -1898,6 +1901,13 @@ class TestUserDType:
         # mytype does not inherit from `np.generic`.  This seems like an
         # unnecessary restriction, but one that has been around forever:
         assert np.dtype(mytype) == np.dtype("O")
+
+        if HAS_REFCOUNT:
+            # Create an array and test that memory gets cleaned up (gh-25949)
+            o = object()
+            a = np.array([o], dtype=dt)
+            del a
+            assert sys.getrefcount(o) == 2
 
     def test_custom_structured_dtype_errors(self):
         class mytype:
