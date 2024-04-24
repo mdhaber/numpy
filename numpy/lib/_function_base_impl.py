@@ -4197,8 +4197,7 @@ def quantile(a,
     method : str, optional
         This parameter specifies the method to use for estimating the
         quantile.  There are many different methods, some unique to NumPy.
-        See the notes for explanation.  The options sorted by their R type
-        as summarized in the H&F paper [1]_ are:
+        The recommended options, numbered as they appear in [1]_, are:
 
         1. 'inverted_cdf'
         2. 'averaged_inverted_cdf'
@@ -4210,13 +4209,16 @@ def quantile(a,
         8. 'median_unbiased'
         9. 'normal_unbiased'
 
-        The first three methods are discontinuous.  NumPy further defines the
-        following discontinuous variations of the default 'linear' (7.) option:
+        The first three methods are discontinuous. For backward compatibility
+        with previous versions of NumPy, the following discontinuous variations
+        of the default 'linear' (7.) option are available:
 
         * 'lower'
         * 'higher',
         * 'midpoint'
         * 'nearest'
+
+        See Notes for details.
 
         .. versionchanged:: 1.22.0
             This argument was previously called "interpolation" and only
@@ -4268,20 +4270,12 @@ def quantile(a,
     Given a sample `a` from an underlying distribution, `quantile` provides a
     nonparametric estimate of the inverse cumulative distribution function.
 
-    More formally, the quantile at probability level :math:`q` of a cumulative
-    distribution function :math:`F(y)=P(Y \\leq y)` with probability measure
-    :math:`P` is defined as any number :math:`x` that fulfills the
-    *coverage conditions*
-
-    .. math:: P(Y < x) \\leq q \\quad\\text{and}\\quad P(Y \\leq x) \\geq q
-
-    with random variable :math:`Y\\sim P`.
     Sample quantiles, the result of ``quantile``, provide nonparametric
     estimation of the underlying population counterparts, represented by the
     unknown :math:`F`, given a data vector ``a`` of length ``n``.
 
-    By default (``method='linear'``), this is done by interpolating between
-    adjacent elements in ``y``, a sorted copy of `a`::
+    By default, this is done by interpolating between adjacent elements in
+    ``y``, a sorted copy of `a`::
 
         (1-g)*y[j] + g*y[j+1]
 
@@ -4289,13 +4283,13 @@ def quantile(a,
     fractional components of ``q * (n-1)``, and ``n`` is the number of
     elements in the sample.
 
-    This a special case of Equation 1 of H&F [1]_. More generally,
+    This is a special case of Equation 1 of H&F [1]_. More generally,
 
     - ``j = (q*n + m - 1) // 1``, and
     - ``g = (q*n + m - 1) % 1``,
 
-    where ``m`` is defined differently for each value of the ``method``
-    parameter.
+    where ``m`` may be defined according to several different conventions.
+    The preferred convention may be selected using the ``method`` parameter:
 
     =============================== =============== ===============
     ``method``                      number in H&F   ``m``
@@ -4312,9 +4306,10 @@ def quantile(a,
     ``n - 1`` when the results of the formula would be outside the allowed
     range of non-negative indices.
 
-    The methods above are all continuous functions of probability `q`.
-    Methods 1-3 of H&F [1]_ provide three discontinuous estimators, where
-    ``j`` is defined as above and ``m`` and ``g`` are defined as follows.
+    The table above includes only the estimators from H&F that are continuous
+    functions of probability `q` (estimators 4-9). NumPy also provides the
+    three discontinuous estimators from H&F (estimators 1-3), where ``j`` is
+    defined as above and ``m`` and ``g`` are defined as follows.
 
     1. ``inverted_cdf``: ``m = 0`` and ``g = int(q*n > 0)``
     2. ``averaged_inverted_cdf``: ``m = 0`` and ``g = (1 + int(q*n > 0)) / 2``
@@ -4332,14 +4327,22 @@ def quantile(a,
     - ``nearest``: ``g = (q*(n-1) % 1) > 0.5``
 
     **Weighted quantiles:**
+    More formally, the quantile at probability level :math:`q` of a cumulative
+    distribution function :math:`F(y)=P(Y \\leq y)` with probability measure
+    :math:`P` is defined as any number :math:`x` that fulfills the
+    *coverage conditions*
+
+    .. math:: P(Y < x) \\leq q \\quad\\text{and}\\quad P(Y \\leq x) \\geq q
+
+    with random variable :math:`Y\\sim P`.
     Some of the quantile estimators above (namely ``inverted_cdf`` and
     ``averaged_inverted_cdf``) arise when one considers :math:`F` as the
     empirical distribution function of the data, i.e.
     :math:`F(y) = \\frac{1}{n} \\sum_i 1_{a_i \\leq y}`.
     Then, different methods correspond to different choices of :math:`x` that
-    fulfill the above inequalities.
+    fulfill the above coverage conditions.
 
-    For weighted quantiles, the above coverage conditions still hold. The
+    For weighted quantiles, the coverage conditions still hold. The
     empirical cumulative distribution is simply replaced by its weighted
     version, i.e. 
     :math:`P(Y \\leq t) = \\frac{1}{\\sum_i w_i} \\sum_i w_i 1_{x_i \\leq t}`.
