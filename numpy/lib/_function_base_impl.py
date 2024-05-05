@@ -4180,7 +4180,7 @@ def quantile(a,
     a : array_like of real numbers
         Input array or object that can be converted to an array.
     q : array_like of float
-        Probability or sequence of probabilities for the quantiles to compute.
+        Probability or sequence of probabilities of the quantiles to compute.
         Values must be between 0 and 1 inclusive.
     axis : {int, tuple of int, None}, optional
         Axis or axes along which the quantiles are computed. The default is
@@ -4270,10 +4270,6 @@ def quantile(a,
     Given a sample `a` from an underlying distribution, `quantile` provides a
     nonparametric estimate of the inverse cumulative distribution function.
 
-    Sample quantiles, the result of ``quantile``, provide nonparametric
-    estimation of the underlying population counterparts, represented by the
-    unknown :math:`F`, given a data vector `a` of length ``n``.
-
     By default, this is done by interpolating between adjacent elements in
     ``y``, a sorted copy of `a`::
 
@@ -4336,12 +4332,16 @@ def quantile(a,
     .. math:: P(Y < x) \\leq q \\quad\\text{and}\\quad P(Y \\leq x) \\geq q
 
     with random variable :math:`Y\\sim P`.
+    Sample quantiles, the result of `quantile`, provide nonparametric
+    estimation of the underlying population counterparts, represented by the
+    unknown :math:`F`, given a data vector `a` of length ``n``.
+
     Some of the estimators above arise when one considers :math:`F` as the
     empirical distribution function of the data, i.e.
     :math:`F(y) = \\frac{1}{n} \\sum_i 1_{a_i \\leq y}`.
     Then, different methods correspond to different choices of :math:`x` that
-    fulfill the above coverage conditions. Methods that follow this approach are
-    ``inverted_cdf`` and ``averaged_inverted_cdf``.
+    fulfill the above coverage conditions. Methods that follow this approach
+    are ``inverted_cdf`` and ``averaged_inverted_cdf``.
 
     For weighted quantiles, the coverage conditions still hold. The
     empirical cumulative distribution is simply replaced by its weighted
