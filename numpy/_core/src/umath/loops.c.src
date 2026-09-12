@@ -1742,6 +1742,20 @@ HALF_spacing(char **args, npy_intp const *dimensions, npy_intp const *steps, voi
 }
 
 NPY_NO_EXPORT void
+HALF_ceil(char **args, npy_intp const *dimensions, npy_intp const *steps, void *NPY_UNUSED(func))
+{
+    UNARY_LOOP {
+        const npy_half in1 = *(npy_half *)ip1;
+        if (npy_half_isnan(in1)) {
+            *((npy_half *)op1) = NPY_HALF_NAN;
+        } else {
+            const npy_float f = npy_half_to_float(in1);
+            *((npy_half *)op1) = npy_float_to_half(npy_ceilf(f));
+        }
+    }
+}
+
+NPY_NO_EXPORT void
 HALF_copysign(char **args, npy_intp const *dimensions, npy_intp const *steps, void *NPY_UNUSED(func))
 {
     BINARY_LOOP {

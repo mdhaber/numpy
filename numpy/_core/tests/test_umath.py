@@ -1964,11 +1964,8 @@ class TestSpecialFloats:
     def test_unary_spurious_fpexception(self, ufunc, dtype, data, escape):
         if escape and ufunc in escape:
             return
-        # FIXME: NAN raises FP invalid exception:
-        #  - ceil/float16 on MSVC:32-bit
-        #  - arccos/float16,float32 on Android
-        if ufunc is np.ceil and dtype == 'e':
-            return
+        # FIXME: NAN raises FP invalid exception for arccos/float16,float32
+        # on Android.
         if (ufunc is np.arccos and platform.system() == 'Android' and
             any(np.isnan(d) if isinstance(d, (int, float)) else False for d in data)):
             pytest.skip(f"{ufunc} with NaN generates warnings on this platform")

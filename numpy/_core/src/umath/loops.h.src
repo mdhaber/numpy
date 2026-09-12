@@ -418,6 +418,9 @@ NPY_NO_EXPORT void
 NPY_NO_EXPORT void
 @TYPE@_logical_not(char **args, npy_intp const *dimensions, npy_intp const *steps, void *NPY_UNUSED(func));
 
+NPY_NO_EXPORT void
+HALF_ceil(char **args, npy_intp const *dimensions, npy_intp const *steps, void *NPY_UNUSED(func));
+
 /**begin repeat1
  * #kind = isnan, isinf, isfinite, signbit, copysign, nextafter, spacing#
  * #func = npy_isnan, npy_isinf, npy_isfinite, npy_signbit, npy_copysign, nextafter, spacing#
