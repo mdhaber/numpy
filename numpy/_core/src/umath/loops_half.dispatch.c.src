@@ -67,6 +67,7 @@ avx512_@func@_f16(const npy_half *src, npy_half *dst, npy_intp len)
 /**begin repeat
  *  #func = sin, cos, tan, exp, exp2, expm1, log, log2, log10, log1p, cbrt, arcsin, arccos, arctan, sinh, cosh, tanh, arcsinh, arccosh, arctanh#
  *  #intrin = sin, cos, tan, exp, exp2, expm1, log, log2, log10, log1p, cbrt, asin, acos, atan, sinh, cosh, tanh, asinh, acosh, atanh#
+ *  #check_nan = 0*12, 1, 0*7#
  */
 NPY_NO_EXPORT void NPY_CPU_DISPATCH_CURFX(HALF_@func@)
 (char **args, npy_intp const *dimensions, npy_intp const *steps, void *NPY_UNUSED(data))
@@ -85,8 +86,15 @@ NPY_NO_EXPORT void NPY_CPU_DISPATCH_CURFX(HALF_@func@)
     }
 #endif // NPY__SVML_IS_ENABLED
     UNARY_LOOP {
-        const npy_float in1 = npy_half_to_float(*(npy_half *)ip1);
-        *((npy_half *)op1) = npy_float_to_half(npy_@intrin@f(in1));
+        const npy_half in1 = *(npy_half *)ip1;
+#if @check_nan@
+        if (npy_half_isnan(in1)) {
+            *((npy_half *)op1) = NPY_HALF_NAN;
+            continue;
+        }
+#endif
+        const npy_float f = npy_half_to_float(in1);
+        *((npy_half *)op1) = npy_float_to_half(npy_@intrin@f(f));
     }
 }
 /**end repeat**/
